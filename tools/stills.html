@@ -1,0 +1,139 @@
+<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;background:#000}canvas{display:block;width:100vw;height:100vh}</style>
+<script type="importmap">{"imports":{"three":"/tools/node_modules/three/build/three.module.js","three/addons/":"/tools/node_modules/three/examples/jsm/"}}</script></head>
+<body><canvas id="c"></canvas><script type="module">
+import { createTalentScene } from '/src/scene.js';
+const c=document.getElementById('c');
+const S=await createTalentScene(c,{preserve:true, stance:new URLSearchParams(location.search).get("stance")||"reach"});
+S.resize(innerWidth,innerHeight);
+const T=S.THREE, V3=T.Vector3;
+const REL={ f: [[0.2,0.34,0.2],[0.22,0.38,0.22],[0.26,0.42,0.24],[0.3,0.46,0.26]], t:[0.05,0.18,0.16] };
+function prep(pose){ S.setExplode(0); S.setDrawing(0,0); S.setAssist(0,0,0.5); S.setPose(pose); S.hand.updateMatrixWorld(true); S.rebuildCables(); }
+function shoot(k){ S.applyCamera(k,0,true); S.renderer.render(S.scene,S.camera); }
+const mat=(o)=>new T.MeshPhysicalMaterial(o);
+const props=new T.Group(); S.scene.add(props);
+function clear(){ props.clear(); S.ground.visible=true; S.ground.position.y=-3.35; }
+function hl(v){ return S.hand.localToWorld(v.clone()); }
+window.render = (name, cam) => {
+  clear();
+  if (name==='music') {
+    const pose={ f:[[0.42,0.62,0.3],[0.2,0.36,0.22],[0.28,0.45,0.26],[0.34,0.5,0.28]], t:[0.12,0.22,0.18] };
+    prep(pose);
+    // keys in hand-local space
+    const g=new T.Group(); S.hand.add(g); props.userData.k=g;
+    const ivory=mat({color:0xc9c1b3,roughness:0.36,clearcoat:0.5,clearcoatRoughness:0.3});
+    const ebony=mat({color:0x111010,roughness:0.28,clearcoat:0.9,clearcoatRoughness:0.2});
+    const top=-4.6;
+    for(let i=-9;i<=9;i++){ const k=new T.Mesh(new T.BoxGeometry(2.25,1.4,15),ivory); k.position.set(i*2.35+0.6,top-0.7,10); k.castShadow=k.receiveShadow=true; g.add(k);
+      const n=((i%7)+7)%7; if(n!==2&&n!==6){ const b=new T.Mesh(new T.BoxGeometry(1.3,1.1,9),ebony); b.position.set(i*2.35+0.6+1.175,top+0.45,14.2); b.castShadow=b.receiveShadow=true; g.add(b);} }
+    const bed=new T.Mesh(new T.BoxGeometry(50,2,24),mat({color:0x0d0c0b,roughness:0.6})); bed.position.set(0,top-2.2,11); g.add(bed);
+    const fall=new T.Mesh(new T.BoxGeometry(50,4,1.2),mat({color:0x0d0c0b,roughness:0.25,clearcoat:1})); fall.position.set(0,top+1.2,19.2); fall.receiveShadow=true; g.add(fall);
+    props.add(new T.Group()); props.userData.cleanup=()=>S.hand.remove(g);
+    shoot({ t:[-3.5,-0.6,4.5], az:0.35, el:0.36, d:32, fov:26, sx:0 });
+    S.hand.remove(g);
+  }
+
+
+  if (name==='cooking') {
+    const pose={ f:[[0.75,0.8,0.45],[1.25,1.35,0.75],[1.3,1.4,0.75],[1.35,1.4,0.7]], t:[0.4,0.35,0.3] };
+    prep(pose);
+    const wp=(o)=>o.getWorldPosition(new V3());
+    const centroid=(f)=>{ const pts=[wp(f.root),wp(f.bones[1]),wp(f.bones[2]),wp(f.tip)]; return pts.reduce((a,b)=>a.add(b),new V3()).multiplyScalar(1/4); };
+    const cL=centroid(S.fingers[3]), cM=centroid(S.fingers[1]);
+    const axis=cM.clone().sub(cL).normalize(); axis.y=0; axis.normalize();
+    const hc=cL.clone().lerp(cM,0.5);
+    const wood=mat({color:0x2b1d14,roughness:0.55,clearcoat:0.4});
+    const steel=mat({color:0xc4bfb8,metalness:1,roughness:0.18});
+    const knife=new T.Group();
+    const handle=new T.Mesh(new T.CapsuleGeometry(0.9,9.5,8,24),wood); handle.rotation.z=Math.PI/2; handle.scale.set(1,1,0.75); handle.position.x=-1.2; knife.add(handle);
+    for(const x of [-4.2,-0.8,2.4]){ const r=new T.Mesh(new T.CylinderGeometry(0.22,0.22,1.45,16),steel); r.rotation.x=Math.PI/2; r.position.set(x,0,0); knife.add(r); }
+    const bol=new T.Mesh(new T.CylinderGeometry(1.0,1.15,1.1,24),steel); bol.rotation.z=Math.PI/2; bol.scale.set(1,1,0.6); bol.position.x=4.6; knife.add(bol);
+    const sh=new T.Shape(); sh.moveTo(0,0.6); sh.lineTo(19,0.2); sh.quadraticCurveTo(21.5,-0.2,22,-1.2); sh.quadraticCurveTo(17,-4.6,6,-4.6); sh.quadraticCurveTo(0.6,-4.6,0,-3.6); sh.lineTo(0,0.6);
+    const bg=new T.ExtrudeGeometry(sh,{depth:0.14,bevelEnabled:true,bevelThickness:0.04,bevelSize:0.05,bevelSegments:2,curveSegments:24}); bg.translate(0,0,-0.07);
+    const blade=new T.Mesh(bg,steel); blade.position.x=5.1; knife.add(blade);
+    knife.traverse(o=>{ if(o.isMesh){o.castShadow=true;o.receiveShadow=true;} });
+    // place: handle inside the curl, blade running past the index and thumb toward the board
+    knife.position.copy(hc).addScaledVector(axis,1.2);
+    knife.quaternion.setFromUnitVectors(new V3(1,0,0),axis);
+    knife.rotateX(0.0);
+    knife.position.y -= 0.2;
+    props.add(knife);
+    knife.updateMatrixWorld(true);
+    const edgeY=knife.localToWorld(new V3(16,-4.6,0)).y;
+    const boardY=edgeY-0.05;
+    const board=new T.Mesh(new T.BoxGeometry(46,2.2,30),mat({color:0x4a3324,roughness:0.7})); board.position.set(hc.x+6,boardY-1.1,hc.z+4); board.receiveShadow=true; props.add(board);
+    S.ground.position.y=boardY-2.2;
+    const carrot=mat({color:0xc4561c,roughness:0.5,clearcoat:0.3});
+    const tipW=knife.localToWorld(new V3(14,-4.6,2));
+    for(let i=0;i<34;i++){ const c=new T.Mesh(new T.BoxGeometry(0.62,0.62,0.62),carrot); c.position.set(tipW.x+(Math.random()-0.5)*4.5, boardY+0.31, tipW.z+2+Math.random()*3.5); c.rotation.y=Math.random()*3; c.castShadow=c.receiveShadow=true; props.add(c); }
+    
+    const herb=mat({color:0x2f4a1c,roughness:0.5,sheen:0.6,sheenColor:0x9cc06a});
+    for(let i=0;i<60;i++){ const g=new T.Mesh(new T.SphereGeometry(0.18,8,6),herb); g.scale.set(1,0.4,1.6); g.position.set(tipW.x-6+(Math.random()-0.5)*3, boardY+0.08, tipW.z+5+(Math.random()-0.5)*2.5); g.rotation.y=Math.random()*3; props.add(g); }
+    window.__k={hc:hc.toArray(),axis:axis.toArray(),boardY};
+    const mid=hc.clone().lerp(knife.localToWorld(new V3(12,-2,0)),0.5);
+    const c=cam||{az:-0.5,el:0.45,d:46,dy:0};
+    shoot({ t:[mid.x, mid.y+(c.dy||0), mid.z], az:c.az, el:c.el, d:c.d, fov:26, sx:0 });
+  }
+  if (name==='plating') {
+    const pose={ f:[[0.5,0.55,0.3],[0.62,0.85,0.5],[0.85,1.0,0.6],[0.95,1.1,0.6]], t:[0.3,0.3,0.25] };
+    prep(pose);
+    const a=new V3(), b=new V3(); S.fingers[0].tip.getWorldPosition(a); S.thumbTip.getWorldPosition(b);
+    const mid=a.clone().add(b).multiplyScalar(0.5);
+    S.ground.position.y=mid.y-4.6; const gy=S.ground.position.y;
+    // plate
+    const pp=[new T.Vector2(0.001,0),new T.Vector2(7,0),new T.Vector2(7.4,0.15),new T.Vector2(9.6,0.55),new T.Vector2(10.2,0.95),new T.Vector2(10.35,1.0),new T.Vector2(10.1,0.82),new T.Vector2(9.4,0.62),new T.Vector2(7.2,0.32),new T.Vector2(0.001,0.32)];
+    const plate=new T.Mesh(new T.LatheGeometry(pp,96),mat({color:0xbdb6ab,roughness:0.3,clearcoat:1,clearcoatRoughness:0.1}));
+    const tipP=new V3(mid.x-1.2, gy+0.62, mid.z+2.6);
+    plate.position.set(tipP.x-2.5,gy,tipP.z-1.5); plate.castShadow=plate.receiveShadow=true; props.add(plate);
+    // sauce swoosh
+    const pts=[]; for(let i=0;i<=80;i++){ const t=i/80; pts.push(new V3(plate.position.x-4.2+t*8.2, gy+0.36, plate.position.z+2.2-Math.sin(t*Math.PI)*3.2+t*0.8)); }
+    const sauce=new T.Mesh(new T.TubeGeometry(new T.CatmullRomCurve3(pts),160,0.75,16,false),mat({color:0x3e160e,roughness:0.12,clearcoat:1}));
+    sauce.scale.set(1,0.18,1); sauce.position.y=gy*0.82+0.06; props.add(sauce);
+    // a few garnish pieces
+    const leafG=new T.SphereGeometry(1,24,12); leafG.scale(0.34,0.05,0.18);
+    const green=mat({color:0x34491d,roughness:0.45,sheen:0.5,sheenColor:0xb7d38a});
+    [[1.2,0.9,0.4],[1.6,0.5,1.6],[0.8,1.3,2.4],[2.2,1.1,0.9],[-0.6,1.6,1.9]].forEach(([dx,dz,r])=>{ const l=new T.Mesh(leafG,green); l.position.set(plate.position.x+dx,gy+0.4,plate.position.z+dz); l.rotation.y=r; l.castShadow=true; props.add(l); });
+    // tweezers: two tapered blades meeting at the tip, held through the pinch
+    const dir=mid.clone().sub(tipP).normalize(); const len=12;
+    const tw=new T.Group(); const steel=mat({color:0xc9c3ba,metalness:1,roughness:0.22});
+    [-1,1].forEach(sd=>{ const g=new T.CylinderGeometry(0.16,0.06,len,10); g.translate(0,len/2,0); g.scale(1.8,1,0.5); const m=new T.Mesh(g,steel); m.position.x=sd*0.08; m.rotation.z=-sd*0.035; m.castShadow=true; tw.add(m); });
+    tw.position.copy(tipP); tw.quaternion.setFromUnitVectors(new V3(0,1,0),dir); props.add(tw);
+    const held=new T.Mesh(leafG,green); held.position.copy(tipP).add(new V3(0,-0.12,0)); held.rotation.y=0.8; props.add(held);
+    shoot({ t:[tipP.x-1.0, tipP.y+2.6, tipP.z+0.2], az:1.0, el:0.58, d:28, fov:26, sx:0 });
+  }
+  if (name==='object' || name==='line') {
+    const pose = name==='object'
+      ? { f:[[0.55,0.62,0.32],[0.5,0.7,0.36],[0.6,0.8,0.4],[0.66,0.86,0.42]], t:[0.32,0.32,0.22] }
+      : { f:[[0.5,0.55,0.3],[0.62,0.85,0.5],[0.85,1.0,0.6],[0.95,1.1,0.6]], t:[0.3,0.3,0.25] };
+    prep(pose);
+    const a=new V3(), b=new V3(); S.fingers[0].tip.getWorldPosition(a); S.thumbTip.getWorldPosition(b);
+    const mid=a.clone().add(b).multiplyScalar(0.5), gap=a.distanceTo(b); console.log('mid',mid.toArray(),gap);
+    if(name==='object'){
+      const r=gap/2*0.98; const pts=[];
+      for(let i=0;i<=40;i++){ const t=i/40; const y=(t-0.5)*r*2.4; const rr=r*(0.66+0.34*Math.sin(Math.PI*t))*(1-0.035*Math.cos(t*Math.PI*8)); pts.push(new T.Vector2(Math.max(0.001,rr),y)); }
+      pts.unshift(new T.Vector2(0.001,-r*1.2)); pts.push(new T.Vector2(0.001,r*1.2));
+      const o=new T.Mesh(new T.LatheGeometry(pts,64),mat({color:0x9c7f5c,metalness:0.9,roughness:0.36}));
+      o.position.copy(mid); const dir=b.clone().sub(a).normalize(); o.quaternion.setFromUnitVectors(new V3(1,0,0),dir);
+      o.rotateZ(Math.PI/2);
+      o.castShadow=o.receiveShadow=true; props.add(o); S.ground.position.y=Math.min(-3.35, mid.y-3.2);
+      shoot({ t:[mid.x,mid.y+0.4,mid.z], az:0.95, el:0.28, d:22, fov:24, sx:0 });
+    } else {
+      S.ground.position.y=mid.y-4.2; const paperY=S.ground.position.y+0.02;
+      const paper=new T.Mesh(new T.PlaneGeometry(34,24),mat({color:0xa9a194,roughness:0.95})); paper.rotation.x=-Math.PI/2; paper.position.set(mid.x-4,paperY,mid.z+3); paper.rotation.z=0.3; paper.receiveShadow=true; props.add(paper);
+      const tipP=new V3(mid.x-1.5, paperY+0.05, mid.z+3.0);
+      const dir=mid.clone().sub(tipP).normalize();
+      const len=13, r=Math.min(0.42,gap/2);
+      const body=new T.Mesh(new T.CylinderGeometry(r,r,len,32),mat({color:0x1a1918,roughness:0.35,clearcoat:0.8}));
+      const cone=new T.Mesh(new T.ConeGeometry(r,1.6,32),mat({color:0xb9b2a7,metalness:1,roughness:0.3}));
+      const pen=new T.Group(); body.position.y=1.6+len/2; cone.position.y=0.8; cone.rotation.x=Math.PI; pen.add(body,cone);
+      body.castShadow=cone.castShadow=true;
+      pen.position.copy(tipP); pen.quaternion.setFromUnitVectors(new V3(0,1,0),dir); props.add(pen);
+      // the drawn line: a smooth curve on the paper ending at the pen tip
+      const pts=[]; for(let i=0;i<=120;i++){ const t=i/120, u=1-t; pts.push(new V3(tipP.x - u*15 + Math.sin(u*5.5)*1.8, paperY+0.03, tipP.z + u*4 + Math.sin(u*3.6)*3.2)); }
+      const line=new T.Mesh(new T.TubeGeometry(new T.CatmullRomCurve3(pts),300,0.06,5,false),mat({color:0x1e1b18,roughness:0.7})); props.add(line);
+      shoot({ t:[tipP.x-1.5, tipP.y+3.2, tipP.z+0.5], az:1.0, el:0.55, d:31, fov:26, sx:0 });
+    }
+  }
+};
+window.renderState = (region,p,center)=>{ S.update({region,p,time:0,idle:false,center}); };
+window.S=S; window.ready=true;
+</script></body></html>
