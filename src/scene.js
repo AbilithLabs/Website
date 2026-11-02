@@ -1,5 +1,8 @@
-// Talent concept scene: an articulated hand study with a conceptual dorsal wearable.
+// Abilith concept scene: an articulated hand and arm wearing Hermes, a knit sleeve from the fingertips to the shoulder.
 // Units are roughly centimetres. Hand-local axes: +Z toward the fingertips, +Y dorsal, -X thumb side.
+// Hermes follows the white paper's v1 layout: a knit sleeve and glove, carbon only where the brakes push (a back-of-hand
+// plate, a forearm cuff and an upper-arm cuff), a thin electrostatic brake on each finger, a 16-channel EMG band,
+// 12 vibration cues in the knit, a grip-assist motor on the upper arm, and the battery, chip and radio at the shoulder.
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
@@ -11,27 +14,90 @@ const lerp = (a, b, t) => a + (b - a) * t;
 const ss = (a, b, v) => { const t = clamp((v - a) / (b - a)); return t * t * (3 - 2 * t); };
 const se = (v, e) => Math.sign(v) * Math.pow(Math.abs(v), e);
 
-// ---------- materials ----------
+// ---------- palette ----------
 const C = {
   bg: 0x0b0a09,
   skin: new THREE.Color(0xb98d74),
   skinGhost: new THREE.Color(0x1c1917),
+  knit: new THREE.Color(0xa19b91),
+  knitGhost: new THREE.Color(0x181614),
   graphite: new THREE.Color(0x1f1d1b),
-  polymer: new THREE.Color(0x8a8278),
-  line: new THREE.Color(0xe9e2d6),
-  lineDim: new THREE.Color(0x77706a),
+  carbon: new THREE.Color(0x4a4744),
+  film: new THREE.Color(0x24211f),
   accent: new THREE.Color(0xd99a62),
-  cable: new THREE.Color(0x4a443d),
 };
 
+// ---------- procedural textures ----------
+// knit: stockinette, columns of interlocking V stitches, 16 x 16 stitches per tile, every stitch drawn a little
+// differently so the yarn doesn't look printed. The sleeve is knit as a tube: a fixed count of stitches around that
+// stretch where the arm is fuller. The glove is a finer gauge.
+const KNIT_TILE = 16, KNIT_AROUND = 80, KNIT_ROW = 0.2, KNIT_BUMP = 0.9;
+const GLOVE_SW = 0.2, GLOVE_RH = 0.16;
+function canvasTexture(canvas, srgb = false) {
+  const t = new THREE.CanvasTexture(canvas);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 8;
+  if (srgb) t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+function knitTextures() {
+  const s = 256, w = s / KNIT_TILE, n = KNIT_TILE;
+  const c = document.createElement('canvas'); c.width = c.height = s;
+  const g = c.getContext('2d');
+  g.fillStyle = '#1e1e1e'; g.fillRect(0, 0, s, s);
+  g.filter = 'blur(0.7px)';
+  let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const jit = Array.from({ length: n * n }, () => [rnd(), rnd(), rnd()]);
+  for (let j = -1; j <= n; j++) for (let i = -1; i <= n; i++) {
+    const [a, b, d] = jit[((j + n) % n) * n + ((i + n) % n)];
+    for (const side of [-1, 1]) {
+      g.save(); g.translate((i + 0.5) * w + side * w * 0.22, (j + 0.5 + (a - 0.5) * 0.1) * w); g.rotate(side * (0.48 + (d - 0.5) * 0.12));
+      const hi = Math.round(222 + 30 * b), mid = Math.round(122 + 26 * a);
+      const grd = g.createRadialGradient(0, 0, 0, 0, 0, w * 0.6);
+      grd.addColorStop(0, `rgb(${hi},${hi},${hi})`); grd.addColorStop(0.68, `rgb(${mid},${mid},${mid})`); grd.addColorStop(1, '#2a2a2a');
+      g.fillStyle = grd; g.beginPath(); g.ellipse(0, 0, w * 0.23, w * 0.62, 0, 0, Math.PI * 2); g.fill(); g.restore();
+    }
+  }
+  // shade: the same stitches, lifted, so the gaps between them sit a little in shadow
+  const c2 = document.createElement('canvas'); c2.width = c2.height = s;
+  const g2 = c2.getContext('2d'); g2.drawImage(c, 0, 0); g2.fillStyle = 'rgba(255,255,255,0.72)'; g2.fillRect(0, 0, s, s);
+  return { bump: canvasTexture(c), shade: canvasTexture(c2, true) };
+}
+// carbon: a 2 x 2 twill, 8 x 8 tows per tile
+function twillTexture() {
+  const s = 128, n = 8, w = s / n;
+  const c = document.createElement('canvas'); c.width = c.height = s;
+  const g = c.getContext('2d');
+  for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
+    const across = (i + j) % 4 < 2;
+    const grd = across ? g.createLinearGradient(0, j * w, 0, (j + 1) * w) : g.createLinearGradient(i * w, 0, (i + 1) * w, 0);
+    grd.addColorStop(0, '#3a3a3a'); grd.addColorStop(0.5, '#b4b4b4'); grd.addColorStop(1, '#3a3a3a');
+    g.fillStyle = grd; g.fillRect(i * w, j * w, w, w);
+  }
+  return canvasTexture(c, true);
+}
+// a soft round glow for the vibration cues
+function glowTexture() {
+  const c = document.createElement('canvas'); c.width = c.height = 64;
+  const g = c.getContext('2d'), grd = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+  grd.addColorStop(0, 'rgba(255,255,255,1)'); grd.addColorStop(0.25, 'rgba(255,255,255,0.55)'); grd.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = grd; g.fillRect(0, 0, 64, 64);
+  return new THREE.CanvasTexture(c);
+}
+
 function makeMaterials() {
+  const knit = knitTextures(), twill = twillTexture();
+  const fabric = { map: knit.shade, bumpMap: knit.bump, bumpScale: KNIT_BUMP, roughness: 0.82, sheen: 1, sheenColor: 0x8f877d, sheenRoughness: 0.45, envMapIntensity: 0.35 };
   return {
     skin: new THREE.MeshPhysicalMaterial({ color: C.skin.clone(), roughness: 0.58, sheen: 0.7, sheenColor: 0xffcfb4, sheenRoughness: 0.55, clearcoat: 0.06, clearcoatRoughness: 0.6, envMapIntensity: 0.35 }),
     nail: new THREE.MeshPhysicalMaterial({ color: 0xc79a88, roughness: 0.32, clearcoat: 0.8, clearcoatRoughness: 0.2, sheen: 0.3, sheenColor: 0xffe6dc, envMapIntensity: 0.6, side: THREE.DoubleSide }),
+    knit: new THREE.MeshPhysicalMaterial({ color: C.knit.clone(), ...fabric }),
+    glove: new THREE.MeshPhysicalMaterial({ color: C.knit.clone(), ...fabric }),
+    carbon: new THREE.MeshPhysicalMaterial({ color: C.carbon.clone(), map: twill, roughness: 0.42, metalness: 0.1, clearcoat: 1, clearcoatRoughness: 0.08, envMapIntensity: 1 }),
+    film: new THREE.MeshPhysicalMaterial({ color: C.film.clone(), roughness: 0.34, metalness: 0.2, clearcoat: 0.8, clearcoatRoughness: 0.16, envMapIntensity: 0.7 }),
+    brakeIdx: new THREE.MeshPhysicalMaterial({ color: C.film.clone(), roughness: 0.34, metalness: 0.2, clearcoat: 0.8, clearcoatRoughness: 0.16, envMapIntensity: 0.7, emissive: 0x000000 }),
     graphite: new THREE.MeshPhysicalMaterial({ color: C.graphite.clone(), roughness: 0.46, metalness: 0.25, clearcoat: 0.35, clearcoatRoughness: 0.4, envMapIntensity: 0.8 }),
     metal: new THREE.MeshStandardMaterial({ color: 0xbdb6ab, metalness: 1, roughness: 0.3, envMapIntensity: 1.1 }),
-    polymer: new THREE.MeshPhysicalMaterial({ color: C.polymer.clone(), roughness: 0.38, transmission: 0, transparent: true, opacity: 0.8, clearcoat: 0.6, clearcoatRoughness: 0.3, sheen: 0.3, sheenColor: 0xffffff, envMapIntensity: 0.7 }),
-    cable: new THREE.MeshStandardMaterial({ color: C.cable.clone(), metalness: 0.7, roughness: 0.35, emissive: 0x000000 }),
+    cue: new THREE.MeshPhysicalMaterial({ color: C.knit.clone().multiplyScalar(0.34), roughness: 0.7, envMapIntensity: 0.3 }),
     ground: new THREE.MeshStandardMaterial({ color: 0x0c0b0a, roughness: 0.95, metalness: 0 }),
   };
 }
@@ -82,6 +148,27 @@ function palmShape(x, y, z) {
   return [xw, yw + 0.05, zw];
 }
 
+// top of the palm (the back of the hand) at hand-local (x, z): the palm shape sampled over its upper half into a grid
+const palmTop = (() => {
+  const X0 = -5, Z0 = -5, D = 0.1, NX = 101, NZ = 106, top = new Float32Array(NX * NZ).fill(-Infinity);
+  for (let j = 0; j <= 160; j++) for (let i = 0; i < 320; i++) {
+    const th = (j / 160) * Math.PI / 2, ph = (i / 320) * Math.PI * 2;
+    const [x, y, z] = palmShape(Math.sin(th) * Math.cos(ph), Math.cos(th), Math.sin(th) * Math.sin(ph));
+    const gx = Math.round((x - X0) / D), gz = Math.round((z - Z0) / D);
+    if (gx >= 0 && gx < NX && gz >= 0 && gz < NZ) top[gz * NX + gx] = Math.max(top[gz * NX + gx], y);
+  }
+  for (let pass = 0; pass < 4; pass++) for (let gz = 0; gz < NZ; gz++) for (let gx = 0; gx < NX; gx++) {
+    const k = gz * NX + gx; if (top[k] > -Infinity) continue;
+    let m = -Infinity; for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const x = gx + dx, z = gz + dz; if (x >= 0 && x < NX && z >= 0 && z < NZ) m = Math.max(m, top[z * NX + x]); }
+    top[k] = m;
+  }
+  const at = (gx, gz) => top[clamp(gz, 0, NZ - 1) * NX + clamp(gx, 0, NX - 1)];
+  return (x, z) => {
+    const fx = (x - X0) / D, fz = (z - Z0) / D, ix = Math.floor(fx), iz = Math.floor(fz), tx = fx - ix, tz = fz - iz;
+    return lerp(lerp(at(ix, iz), at(ix + 1, iz), tx), lerp(at(ix, iz + 1), at(ix + 1, iz + 1), tx), tz);
+  };
+})();
+
 function palmGeo() {
   let g = new THREE.SphereGeometry(1, 110, 72);
   g.deleteAttribute('uv'); g.deleteAttribute('normal');
@@ -97,15 +184,6 @@ function palmGeo() {
 const forearmR = (z) => { const d = -z - 2.2; return 2.2 - 0.12 * Math.exp(-((d - 4.6) ** 2) / 4) + 1.95 * ss(3, 17, d) - 0.45 * ss(19, 26, d); };
 const FA_SX = 1.42, FA_SY = 0.76, FA_Y = -0.12;
 
-function forearmGeo() {
-  const pts = [];
-  for (let i = 0; i <= 8; i++) { const a = (i / 8) * Math.PI / 2; pts.push(new V2(Math.max(1e-4, forearmR(-2.2) * Math.sin(a)), -1.4 * Math.cos(a))); }
-  for (let i = 1; i <= 60; i++) { const d = (i / 60) * 26.4; pts.push(new V2(forearmR(-2.2 - d), d)); }
-  const g = new THREE.LatheGeometry(pts, 64);
-  g.rotateX(-Math.PI / 2); g.translate(0, 0, -2.2); g.scale(FA_SX, FA_SY, 1); g.translate(0, FA_Y, 0);
-  return g;
-}
-
 function ringGeo(R, thick, width, rounding = 0.1) {
   // rounded-rectangle profile lathed into a band (axis Y)
   const pts = [], w = width / 2, r = Math.min(rounding, thick / 2, w);
@@ -117,17 +195,6 @@ function ringGeo(R, thick, width, rounding = 0.1) {
   pts.push(pts[0].clone());
   return new THREE.LatheGeometry(pts, 72);
 }
-
-function saddleGeo(r, len, thick = 0.15) {
-  const ro = r + 0.04 + thick, ri = r + 0.04, a0 = -0.3, a1 = Math.PI + 0.3;
-  const s = new THREE.Shape();
-  s.absarc(0, 0, ro, a0, a1, false);
-  s.absarc(0, 0, ri, a1, a0, true);
-  const g = new THREE.ExtrudeGeometry(s, { depth: len, bevelEnabled: true, bevelThickness: 0.06, bevelSize: 0.05, bevelSegments: 3, curveSegments: 48 });
-  g.translate(0, 0, -len / 2); g.scale(1.08, 0.84, 1);
-  return g;
-}
-
 
 // fingernail: a thin curved plate that follows the distal phalanx surface and stops short of the fingertip
 function nailGeo(L, r0, r1, capT, width = 0.6, start = 0.5) {
@@ -154,6 +221,97 @@ function nailGeo(L, r0, r1, capT, width = 0.6, start = 0.5) {
 }
 
 function bend(g, k) { const p = g.attributes.position; for (let i = 0; i < p.count; i++) p.setY(i, p.getY(i) - k * p.getX(i) ** 2); g.computeVertexNormals(); return g; }
+// push every vertex out along its normal: a layer of fabric over the same shape
+function offsetGeo(g, d) {
+  const p = g.attributes.position, n = g.attributes.normal;
+  for (let i = 0; i < p.count; i++) p.setXYZ(i, p.getX(i) + n.getX(i) * d, p.getY(i) + n.getY(i) * d, p.getZ(i) + n.getZ(i) * d);
+  g.computeVertexNormals(); return g;
+}
+// turn an indexed closed mesh inside out if its triangles face inward
+function faceOutward(g) {
+  const p = g.attributes.position, ix = g.index, a = new V3(), b = new V3(), c = new V3();
+  let vol = 0;
+  for (let i = 0; i < ix.count; i += 3) { a.fromBufferAttribute(p, ix.getX(i)); b.fromBufferAttribute(p, ix.getX(i + 1)); c.fromBufferAttribute(p, ix.getX(i + 2)); vol += a.dot(b.cross(c)); }
+  if (vol < 0) for (let i = 0; i < ix.count; i += 3) { const t = ix.getX(i + 1); ix.setX(i + 1, ix.getX(i + 2)); ix.setX(i + 2, t); }
+  return g;
+}
+// A shell that follows the limb: an arc band (angles a0..a1, PI/2 = +Y) extruded along sec(t), t = 0..1.
+// sec(t) gives the limb section: { c: centre, X, Y: section axes, A: axis (t increasing), r, sx, sy }.
+function limbShell(sec, { len, off = 0.18, thick = 0.2, a0 = -0.2, a1 = Math.PI + 0.2, steps = 14, bevel = 0.05, tile = 1.6 } = {}) {
+  const R = 10, depth = 10, s = new THREE.Shape();
+  s.absarc(0, 0, R + thick, a0, a1, false);
+  s.absarc(0, 0, R, a1, a0, true);
+  let g = new THREE.ExtrudeGeometry(s, { depth, steps, bevelEnabled: true, bevelThickness: bevel, bevelSize: bevel, bevelSegments: 2, curveSegments: 72 });
+  const p = g.attributes.position, uv = g.attributes.uv, v = new V3();
+  for (let i = 0; i < p.count; i++) {
+    const x = p.getX(i), y = p.getY(i), z = p.getZ(i);
+    let a = Math.atan2(y, x); while (a < a0 - 0.5) a += Math.PI * 2;
+    const rho = Math.hypot(x, y) - R, t = clamp(z / depth), dz = z < 0 ? z : z > depth ? z - depth : 0;
+    const q = sec(t), rr = q.r + off + rho;
+    v.copy(q.c).addScaledVector(q.X, Math.cos(a) * rr * q.sx).addScaledVector(q.Y, Math.sin(a) * rr * q.sy).addScaledVector(q.A, dz);
+    p.setXYZ(i, v.x, v.y, v.z);
+    uv.setXY(i, a * (q.r + off) / tile, t * len / tile);
+  }
+  g.deleteAttribute('normal');
+  g = mergeVertices(g);
+  faceOutward(g);
+  g.computeVertexNormals();
+  return g;
+}
+
+// Knit UVs for the glove's palm: each face takes the flat projection it faces most squarely (from above for the back
+// and palm, from the side for the edges), so the stitches run along the hand and the edges read as side seams.
+function knitUVPalm(g, sw, rh) {
+  g = g.toNonIndexed();
+  const p = g.attributes.position, uv = new Float32Array(p.count * 2), a = new V3(), b = new V3(), c = new V3(), n = new V3();
+  for (let i = 0; i < p.count; i += 3) {
+    a.fromBufferAttribute(p, i); b.fromBufferAttribute(p, i + 1); c.fromBufferAttribute(p, i + 2);
+    n.subVectors(c, b).cross(new V3().subVectors(a, b));
+    const top = Math.abs(n.y) >= Math.abs(n.x);
+    [a, b, c].forEach((q, k) => { uv[(i + k) * 2] = (top ? q.x : q.y + 7) / (sw * KNIT_TILE); uv[(i + k) * 2 + 1] = q.z / (rh * KNIT_TILE); });
+  }
+  g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+  return g;
+}
+// Knit UVs for a finger segment (a lathe along Z): a whole number of stitches around, rows by length
+function knitUVFinger(g, r, sw, rh) {
+  const uv = g.attributes.uv, p = g.attributes.position;
+  const around = Math.max(1, Math.round((2 * Math.PI * r * 0.96) / sw)) / KNIT_TILE;
+  for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * around, p.getZ(i) / (rh * KNIT_TILE));
+  return g;
+}
+
+// A thin rounded plate over a height field: outline = a superellipse trapezoid (half-width w0 at z0 to w1 at z1),
+// top and bottom follow height(x, z), joined by a half-round edge. Dense everywhere, so it can bend with the hand.
+function plateGeo({ w0, w1, z0, z1, n = 5, thick = 0.18, round = 0.07, height = () => 0, tile = 1.6, NA = 112 }) {
+  const zc = (z0 + z1) / 2, hl = (z1 - z0) / 2;
+  const outline = (a) => {
+    const c = Math.cos(a), s = Math.sin(a), z = zc + hl * se(s, 2 / n), w = lerp(w0, w1, (z - z0) / (z1 - z0));
+    return new V2(w * se(c, 2 / n), z);
+  };
+  // rings: [scale of the outline, outward offset, height above the base surface]
+  const rings = [];
+  for (let k = 0; k <= 16; k++) { const t = k / 16; rings.push([1 - (1 - t) ** 1.6, 0, thick]); }
+  for (let k = 1; k < 8; k++) { const a = (k / 8) * Math.PI; rings.push([1, round * Math.sin(a), thick / 2 + (thick / 2) * Math.cos(a)]); }
+  for (let k = 16; k >= 0; k--) { const t = k / 16; rings.push([1 - (1 - t) ** 1.6, 0, 0]); }
+  const pos = [], uv = [], idx = [], W = NA + 1;
+  const base = [], nrm = [];
+  for (let i = 0; i <= NA; i++) {
+    const a = -Math.PI / 2 + (i / NA) * Math.PI * 2, p = outline(a), q = outline(a + 1e-3);
+    base.push(p); nrm.push(new V2(q.y - p.y, -(q.x - p.x)).normalize());
+  }
+  rings.forEach(([sc, off, h]) => {
+    for (let i = 0; i <= NA; i++) {
+      const x = base[i].x * sc + nrm[i].x * off, z = zc + (base[i].y - zc) * sc + nrm[i].y * off;
+      pos.push(x, height(x, z) + h, z); uv.push(x / tile, z / tile);
+    }
+  });
+  for (let r = 0; r < rings.length - 1; r++) for (let i = 0; i < NA; i++) { const a = r * W + i, b = a + 1, c = a + W, d = c + 1; idx.push(a, c, b, b, c, d); }
+  let g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.setIndex(idx);
+  faceOutward(g); g.computeVertexNormals();
+  return g;
+}
 
 // ---------- finger definitions ----------
 const FINGERS = [
@@ -190,6 +348,7 @@ export async function createTalentScene(canvas, opts = {}) {
   scene.environment = pmrem.fromScene(new RoomEnvironment(renderer), 0.04).texture;
 
   const camera = new THREE.PerspectiveCamera(28, 1, 0.5, 200);
+  if (opts.knit) C.knit.set(opts.knit);
   const M = makeMaterials();
 
   // lights
@@ -230,15 +389,16 @@ export async function createTalentScene(canvas, opts = {}) {
   const edgeMat = new THREE.LineBasicMaterial({ color: 0xece5d9, transparent: true, opacity: 0, depthWrite: false });
   const axisMat = new THREE.LineDashedMaterial({ color: 0x8a8178, dashSize: 0.35, gapSize: 0.28, transparent: true, opacity: 0, depthWrite: false });
 
+  // skin and knit share the ghosted outline used by the exploded drawing
   function skinMesh(geo, parent, mat = M.skin) {
     const m = new THREE.Mesh(geo, mat); m.castShadow = true; m.receiveShadow = true; parent.add(m);
     const o = new THREE.Mesh(geo, outlineHand); o.visible = false; parent.add(o); handOutlines.push(o);
     return m;
   }
-  function partMesh(geo, mat, parent, edges = true) {
+  function partMesh(geo, mat, parent, edges = true, angle = 32) {
     const m = new THREE.Mesh(geo, mat); m.castShadow = true; m.receiveShadow = true; parent.add(m);
     const o = new THREE.Mesh(geo, outlinePart); o.visible = false; m.add(o); partOutlines.push(o);
-    if (edges) { const e = new THREE.LineSegments(new THREE.EdgesGeometry(geo, 32), edgeMat); e.visible = false; m.add(e); edgeLines.push(e); }
+    if (edges) { const e = new THREE.LineSegments(new THREE.EdgesGeometry(geo, angle), edgeMat); e.visible = false; m.add(e); edgeLines.push(e); }
     return m;
   }
 
@@ -272,218 +432,225 @@ export async function createTalentScene(canvas, opts = {}) {
   }
   const thumbTip = new THREE.Object3D(); thumbTip.position.set(0, -0.2, THUMB.L[2] + 0.8); thumbBones[2].add(thumbTip);
 
-  // ----- wearable -----
-  const parts = []; // { obj, base:V3, off:V3, delay }
-  const addPart = (obj, off, delay = 0) => { parts.push({ obj, base: obj.position.clone(), off: new V3(...off), delay }); return obj; };
-  const anchors = {}; // named Object3D
-
-  // wrist anchor cuff
-  const cuffZ = -7.2, cuffR = forearmR(cuffZ);
-  const cuff = new THREE.Group(); cuff.position.set(0, FA_Y, cuffZ); hand.add(cuff);
-  const cuffShell = new THREE.Group(); cuff.add(cuffShell); cuffShell.rotation.x = -Math.PI / 2; cuffShell.scale.set(FA_SX, 1, FA_SY);
-  partMesh(ringGeo(cuffR + 0.02, 0.32, 2.7, 0.12), M.graphite, cuffShell);
-  const lip1 = partMesh(ringGeo(cuffR + 0.33, 0.05, 0.22, 0.02), M.metal, cuffShell, false); lip1.position.y = 1.15;
-  const lip2 = partMesh(ringGeo(cuffR + 0.33, 0.05, 0.22, 0.02), M.metal, cuffShell, false); lip2.position.y = -1.15;
-  addPart(cuff, [0, -0.6, -4.2], 0);
-  const cuffTop = cuffR * FA_SY + 0.34;
-  anchors.imu = new THREE.Object3D(); anchors.imu.position.set(cuffR * FA_SX * 0.82, -0.35, 0.4); cuff.add(anchors.imu);
-  { const pod = partMesh(new RoundedBoxGeometry(0.6, 1.2, 1.5, 3, 0.18), M.graphite, cuff); pod.position.set(cuffR * FA_SX + 0.3, -0.2, 0); }
-
-  // drive module on the dorsal cuff
-  const module = new THREE.Group(); module.position.set(0, FA_Y + cuffTop + 0.5, cuffZ + 0.3); hand.add(module);
-  partMesh(bend(new RoundedBoxGeometry(4.2, 0.9, 4.6, 4, 0.3), 0.04), M.metal, module);
-  { const lid = partMesh(bend(new RoundedBoxGeometry(3.2, 0.16, 3.4, 3, 0.07), 0.04), M.graphite, module); lid.position.set(0, 0.42, -0.3); }
-  { const base = partMesh(bend(new RoundedBoxGeometry(4.6, 0.3, 4.9, 3, 0.13), 0.06), M.graphite, module); base.position.y = -0.52; }
-  const ports = [];
-  for (let i = 0; i < 5; i++) {
-    const x = -1.7 + i * 0.85;
-    const port = partMesh(new THREE.CylinderGeometry(0.17, 0.17, 0.35, 20), M.graphite, module, false);
-    port.rotation.x = Math.PI / 2; port.position.set(x, -0.05, 2.35);
-    const a = new THREE.Object3D(); a.position.set(x, -0.05, 2.55); module.add(a); ports.push(a);
-  }
-  anchors.module = new THREE.Object3D(); anchors.module.position.set(-1.2, 0.6, 0.2); module.add(anchors.module);
-  addPart(module, [0, 4.6, -3.2], 0.05);
-
-
-  // ----- arm: one continuous swept form from wrist to shoulder, with a natural elbow bend -----
+  // ----- the arm: one continuous swept form from wrist to shoulder, with a natural elbow bend -----
   const ELBOW_Z = -28.6, UA_LEN = 36, TABLE_BEND = 0.38;
   const elbowP = new V3(0, FA_Y, ELBOW_Z);
   // upper arm: triceps line stays fairly straight; the biceps swells toward the inside of the elbow
   const upperR = (d) => 3.3 + 0.35 * Math.exp(-((d - 13) ** 2) / 50) + 0.55 * Math.exp(-((d - 30) ** 2) / 24) + d * 0.012;
   const bicepD = (d) => 1.15 * Math.exp(-((d - 10.5) ** 2) / 30);
-  const ringR = (d) => upperR(d) + bicepD(d); // straps hug the biceps: radius grows, centre shifts toward it
   const UA_SX = 1.18, UA_SY = 0.98;
   // forearm cross-section: flat at the wrist, rounder toward the elbow
   const sect = (z) => { const k = ss(-12, -26, z); return { r: forearmR(z), sx: lerp(FA_SX, UA_SX, k), sy: lerp(FA_SY, UA_SY, k) }; };
-  function armGeo(bend) {
+  const AX = new V3(1, 0, 0);
+  // samples along the limb (hand space): centre, tangent, radius, section scale, elbow weight
+  function armSamples(bend) {
     const uaDir = new V3(0, Math.sin(bend), -Math.cos(bend)), palmSide = new V3(0, -Math.cos(bend), -Math.sin(bend));
     const BS = Math.sign(bend) || 1, bw = Math.min(1, Math.abs(bend) / 0.3);
     const P0 = new V3(0, FA_Y, ELBOW_Z + 3.4), P2 = elbowP.clone().addScaledVector(uaDir, 3.4);
-    const samples = [];
+    const S = [];
     // rounded start tucked inside the palm
-    for (let i = 0; i <= 8; i++) { const a = (i / 8) * Math.PI / 2, z = -2.2 + 1.4 * Math.cos(a); const q = sect(-2.2); samples.push({ c: new V3(0, FA_Y, z), t: new V3(0, 0, -1), r: Math.max(0.01, q.r * Math.sin(a)), sx: q.sx, sy: q.sy, el: 0 }); }
-    for (let z = -2.5; z > P0.z; z -= 0.35) { const q = sect(z); samples.push({ c: new V3(0, FA_Y, z), t: new V3(0, 0, -1), ...q, el: 0 }); }
+    for (let i = 0; i <= 8; i++) { const a = (i / 8) * Math.PI / 2, z = -2.2 + 1.4 * Math.cos(a); const q = sect(-2.2); S.push({ c: new V3(0, FA_Y, z), t: new V3(0, 0, -1), r: Math.max(0.01, q.r * Math.sin(a)), sx: q.sx, sy: q.sy, el: 0, z }); }
+    for (let z = -2.5; z > P0.z; z -= 0.35) { const q = sect(z); S.push({ c: new V3(0, FA_Y, z), t: new V3(0, 0, -1), ...q, el: 0, z }); }
     const qa = sect(P0.z), rb = upperR(3.4);
     for (let i = 0; i <= 40; i++) {
       const u = i / 40, w = 1 - u;
       const c = P0.clone().multiplyScalar(w * w).addScaledVector(elbowP, 2 * w * u).addScaledVector(P2, u * u);
       const t = elbowP.clone().sub(P0).multiplyScalar(2 * w).addScaledVector(P2.clone().sub(elbowP), 2 * u).normalize();
-      samples.push({ c, t, r: lerp(qa.r, rb, ss(0, 1, u)) + 0.15 * Math.sin(Math.PI * u), sx: lerp(qa.sx, UA_SX, u), sy: lerp(qa.sy, UA_SY, u), el: Math.sin(Math.PI * u) * bw });
+      S.push({ c, t, r: lerp(qa.r, rb, ss(0, 1, u)) + 0.15 * Math.sin(Math.PI * u), sx: lerp(qa.sx, UA_SX, u), sy: lerp(qa.sy, UA_SY, u), el: Math.sin(Math.PI * u) * bw });
     }
-    const ua = (d, r) => ({ c: elbowP.clone().addScaledVector(uaDir, d).addScaledVector(palmSide, bicepD(d) * ss(3.4, 6, d)), t: uaDir.clone(), r, sx: UA_SX, sy: UA_SY, el: 0 });
-    for (let d = 3.7; d <= UA_LEN; d += 0.4) samples.push(ua(d, upperR(d) + bicepD(d) * ss(3.4, 6, d)));
+    const ua = (d, r) => ({ c: elbowP.clone().addScaledVector(uaDir, d).addScaledVector(palmSide, bicepD(d) * ss(3.4, 6, d)), t: uaDir.clone(), r, sx: UA_SX, sy: UA_SY, el: 0, d });
+    for (let d = 3.7; d <= UA_LEN; d += 0.4) S.push(ua(d, upperR(d) + bicepD(d) * ss(3.4, 6, d)));
     // rounded shoulder end
-    for (let i = 1; i <= 8; i++) { const a = (i / 8) * Math.PI / 2; samples.push(ua(UA_LEN + 2.4 * Math.sin(a), Math.max(0.01, upperR(UA_LEN) * Math.cos(a)))); }
-    const N = 72, X = new V3(1, 0, 0), pos = [], idx = [];
-    samples.forEach((sm) => {
-      const up = new V3().crossVectors(X, sm.t).normalize();
-      for (let k = 0; k < N; k++) {
-        const a = (k / N) * Math.PI * 2, ca = Math.cos(a), sa = Math.sin(a);
-        // the point of the elbow sits on the outside of the bend, with a soft crease on the inside
-        const out = Math.max(0, -sa * BS), inn = Math.max(0, sa * BS);
-        const rr = sm.r * (1 + sm.el * (0.16 * Math.pow(out, 3) * Math.exp(-ca * ca * 3) - 0.07 * Math.pow(inn, 2)));
-        const p = sm.c.clone().addScaledVector(X, ca * rr * sm.sx).addScaledVector(up, sa * rr * sm.sy);
-        pos.push(p.x, p.y, p.z);
+    for (let i = 1; i <= 8; i++) { const a = (i / 8) * Math.PI / 2; S.push(ua(UA_LEN + 2.4 * Math.sin(a), Math.max(0.01, upperR(UA_LEN) * Math.cos(a)))); }
+    S.forEach((sm) => { sm.up = new V3().crossVectors(AX, sm.t).normalize(); sm.BS = BS; });
+    return S;
+  }
+  // a point on the ring of sample sm at angle a, pushed out by off (the point of the elbow sits on the outside of the bend)
+  function ringPoint(sm, a, off, out = new V3()) {
+    const ca = Math.cos(a), sa = Math.sin(a);
+    const o = Math.max(0, -sa * sm.BS), n = Math.max(0, sa * sm.BS);
+    const rr = (sm.r + off) * (1 + sm.el * (0.16 * Math.pow(o, 3) * Math.exp(-ca * ca * 3) - 0.07 * Math.pow(n, 2)));
+    return out.copy(sm.c).addScaledVector(AX, ca * rr * sm.sx).addScaledVector(sm.up, sa * rr * sm.sy);
+  }
+
+  // ----- Hermes -----
+  const SLEEVE = 0.16, GLOVE = 0.1;
+  const parts = []; // { obj, base:V3, off:V3, delay }
+  const addPart = (obj, off, delay = 0) => { parts.push({ obj, base: obj.position.clone(), off: new V3(...off), delay }); return obj; };
+  const anchors = {}; // named Object3D
+  const anchor = (parent, x, y, z) => { const o = new THREE.Object3D(); o.position.set(x, y, z); parent.add(o); return o; };
+
+  // the knit sleeve: the arm's own shape plus a layer of fabric, wrist to shoulder. The UV seam runs down the palm side.
+  function sleeveGeo(S) {
+    const N = 72, W = N + 1, pos = [], uv = [], idx = [], p = new V3();
+    let len = 0;
+    S.forEach((sm, j) => {
+      if (j) len += sm.c.distanceTo(S[j - 1].c);
+      for (let k = 0; k <= N; k++) {
+        ringPoint(sm, -Math.PI / 2 + (k / N) * Math.PI * 2, SLEEVE, p); pos.push(p.x, p.y, p.z);
+        uv.push((k / N) * KNIT_AROUND / KNIT_TILE, len / (KNIT_ROW * KNIT_TILE));
       }
     });
-    for (let j = 0; j < samples.length - 1; j++) for (let k = 0; k < N; k++) {
-      const a = j * N + k, b = j * N + ((k + 1) % N), c = a + N, d = b + N;
-      idx.push(a, c, b, b, c, d);
-    }
-    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx); g.computeVertexNormals();
+    for (let j = 0; j < S.length - 1; j++) for (let k = 0; k < N; k++) { const a = j * W + k, b = a + 1, c = a + W, d = b + W; idx.push(a, c, b, b, c, d); }
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.setIndex(idx); g.computeVertexNormals();
+    // the seam column is duplicated for the UVs; share its normals so the knit shows no crease
+    const n = g.attributes.normal;
+    for (let j = 0; j < S.length; j++) { const a = j * W, b = a + N, x = n.getX(a) + n.getX(b), y = n.getY(a) + n.getY(b), z = n.getZ(a) + n.getZ(b), l = Math.hypot(x, y, z) || 1; n.setXYZ(a, x / l, y / l, z / l); n.setXYZ(b, x / l, y / l, z / l); }
     return g;
   }
-  const armMesh = skinMesh(armGeo(TABLE_BEND), hand), armOutline = handOutlines[handOutlines.length - 1];
+  // the wiring channel: a raised seam along the top of the sleeve, forearm cuff to shoulder pack
+  const SEAM_A = Math.PI / 2 + 0.35;
+  function seamGeo(S) {
+    const pts = [];
+    S.forEach((sm, j) => { if (j % 2) return; if ((sm.z !== undefined && sm.z < -11.0) || sm.el > 0 || (sm.d !== undefined && sm.d < 27.8)) pts.push(ringPoint(sm, SEAM_A, SLEEVE + 0.04)); });
+    return new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), pts.length * 3, 0.055, 6, false);
+  }
+  let samples = armSamples(TABLE_BEND);
+  const sleeve = skinMesh(sleeveGeo(samples), hand, M.knit), sleeveOutline = handOutlines[handOutlines.length - 1];
+  const seam = new THREE.Mesh(seamGeo(samples), M.graphite); seam.castShadow = true; hand.add(seam);
   const upper = new THREE.Group(); upper.position.copy(elbowP); upper.rotation.x = TABLE_BEND; hand.add(upper);
-  const strutBetween = (a, b, w, h, mat, parent) => {
-    const len = a.distanceTo(b);
-    const m = partMesh(new RoundedBoxGeometry(w, h, len, 3, Math.min(w, h) * 0.4), mat, parent);
-    m.position.copy(a).lerp(b, 0.5); m.quaternion.setFromUnitVectors(new V3(0, 0, 1), b.clone().sub(a).normalize()); return m;
-  };
-  hand.updateMatrixWorld(true);
-  const sideX = (z) => { const q = sect(z); return q.r * q.sx + 0.4; };
-  // a band around the limb: ring scaled to the cross-section, with an optional routing block on top
-  const band = (parent, r, sx, sy, width, mat, block) => {
-    const sh = new THREE.Group(); sh.rotation.x = -Math.PI / 2; sh.scale.set(sx, 1, sy); parent.add(sh);
-    partMesh(ringGeo(r + 0.02, 0.2, width, 0.08), mat, sh);
-    if (!block) return null;
-    const blk = partMesh(new RoundedBoxGeometry(1.1, 0.42, Math.max(1.0, width + 0.2), 3, 0.13), M.graphite, parent); blk.position.y = r * sy + 0.38;
-    const a = new THREE.Object3D(); a.position.set(0, r * sy + 0.68, 0); parent.add(a); return a;
-  };
-  // sleeve: straps spaced along the forearm, the bundle runs through each one
-  const sleeveA = [];
-  [-10.8, -14.4, -18, -21.6, -25.0].forEach((z, i) => {
-    const g = new THREE.Group(); g.position.set(0, FA_Y, z); hand.add(g);
-    const q = sect(z);
-    const a = band(g, q.r, q.sx, q.sy, i === 2 ? 1.7 : 1.0, i % 2 ? M.graphite : M.polymer, true);
-    sleeveA.push(a);
-    addPart(g, [0, -2.6 - i * 0.25, 0], 0.06 + i * 0.02);
-  });
-  anchors.fguide = sleeveA[2];
-  // lateral forearm strut to the elbow hinge
-  const fstrut = new THREE.Group(); hand.add(fstrut);
-  strutBetween(new V3(sideX(-9), FA_Y, -9), new V3(sideX(ELBOW_Z + 3) + 0.4, FA_Y, ELBOW_Z + 0.4), 0.5, 1.0, M.graphite, fstrut);
-  addPart(fstrut, [3.2, 0, 0], 0.12);
-  // elbow hinge on the outer side of the joint
-  const hingeX = upperR(0) * UA_SX + 0.95;
-  const hinge = new THREE.Group(); hinge.position.set(hingeX, FA_Y, ELBOW_Z); hand.add(hinge);
-  { const d1 = partMesh(new THREE.CylinderGeometry(1.7, 1.7, 0.7, 48), M.metal, hinge); d1.rotation.z = Math.PI / 2;
-    const d2 = partMesh(new THREE.CylinderGeometry(1.15, 1.15, 0.9, 40), M.graphite, hinge); d2.rotation.z = Math.PI / 2;
-    const d3 = partMesh(new THREE.CylinderGeometry(0.35, 0.35, 1.05, 24), M.metal, hinge, false); d3.rotation.z = Math.PI / 2; }
-  anchors.elbow = new THREE.Object3D(); anchors.elbow.position.set(0.6, 1.4, 0); hinge.add(anchors.elbow);
-  addPart(hinge, [5, 0.5, 0], 0.18);
-  // upper-arm strut, upper sleeve straps, bicep cuff with the main drive pack
-  const ustrut = new THREE.Group(); upper.add(ustrut);
-  strutBetween(new V3(hingeX - 0.4, 0, -0.4), new V3(ringR(13) * UA_SX + 0.45, -bicepD(13), -13), 0.5, 1.0, M.graphite, ustrut);
-  addPart(ustrut, [3.2, 0, 0], 0.16);
-  const upperA = [];
-  [5.8, 20.6].forEach((d, i) => {
-    const g = new THREE.Group(); g.position.set(0, -bicepD(d), -d); upper.add(g);
-    upperA.push(band(g, ringR(d), UA_SX, UA_SY, 1.0, i % 2 ? M.graphite : M.polymer, true));
-    addPart(g, [0, -2.8, 0], 0.18 + i * 0.02);
-  });
-  const bZ = -15.5, bR = upperR(15.5), bRing = ringR(15.5);
-  const bicep = new THREE.Group(); bicep.position.set(0, 0, bZ); upper.add(bicep);
-  { const sh = new THREE.Group(); sh.rotation.x = -Math.PI / 2; sh.scale.set(UA_SX, 1, UA_SY); bicep.add(sh);
-    sh.position.y = -bicepD(15.5);
-    partMesh(ringGeo(bRing + 0.03, 0.36, 4.6, 0.14), M.graphite, sh);
-    const l1 = partMesh(ringGeo(bRing + 0.38, 0.06, 0.26, 0.02), M.metal, sh, false); l1.position.y = 2.0;
-    const l2 = partMesh(ringGeo(bRing + 0.38, 0.06, 0.26, 0.02), M.metal, sh, false); l2.position.y = -2.0; }
-  anchors.emg = new THREE.Object3D(); anchors.emg.position.set(-bRing * UA_SX * 0.7, -bicepD(15.5) - bRing * UA_SY * 0.7, 0); bicep.add(anchors.emg);
-  addPart(bicep, [0, -3.5, -1.5], 0.2);
-  { const g = new THREE.Group(); g.position.set(0, 0, -24); upper.add(g); band(g, upperR(24), UA_SX, UA_SY, 1.2, M.polymer, false); addPart(g, [0, -3, 0], 0.22); }
-  const pack = new THREE.Group(); pack.position.set(0, bR * UA_SY + 0.36 + 0.9, bZ); upper.add(pack);
-  partMesh(bend(new RoundedBoxGeometry(5.6, 1.5, 7.2, 4, 0.45), 0.05), M.metal, pack);
-  { const lid = partMesh(bend(new RoundedBoxGeometry(4.4, 0.2, 5.6, 3, 0.08), 0.05), M.graphite, pack); lid.position.set(0, 0.74, -0.2);
-    const base = partMesh(bend(new RoundedBoxGeometry(6.0, 0.36, 7.6, 3, 0.15), 0.07), M.graphite, pack); base.position.y = -0.82;
-    for (let i = 0; i < 3; i++) { const fin = partMesh(new RoundedBoxGeometry(3.6, 0.12, 0.3, 2, 0.05), M.metal, pack, false); fin.position.set(0, 0.86, 1.6 + i * 0.5); } }
-  anchors.pack = new THREE.Object3D(); anchors.pack.position.set(0, 0.2, 3.7); pack.add(anchors.pack);
-  addPart(pack, [0, 5.5, 0], 0.24);
-  anchors.moduleBack = new THREE.Object3D(); anchors.moduleBack.position.set(0, 0.0, -2.4); module.add(anchors.moduleBack);
-  // the bundle rides over the top of the elbow rather than through the hinge
-  const elbowTop = new THREE.Object3D(); elbowTop.position.set(0, upperR(0) * UA_SY + 0.55, 0.2); upper.add(elbowTop);
-  anchors.armRoute = [anchors.pack, ...upperA.slice().reverse(), elbowTop, ...sleeveA.slice().reverse(), anchors.moduleBack];
 
-  // dorsal guide plate across the metacarpals, held by a palm strap
-  const dorsal = new THREE.Group(); dorsal.position.set(-0.1, 1.42, 2.2); wrist.add(dorsal);
-  { const plate = partMesh(bend(new RoundedBoxGeometry(6.0, 0.18, 1.8, 3, 0.08), 0.035), M.polymer, dorsal); plate.rotation.x = 0.06; }
-  const kb = [];
-  FINGERS.forEach((f, i) => {
-    const x = f.base[0] * 0.95 + 0.1;
-    const blk = partMesh(new RoundedBoxGeometry(0.62, 0.3, 0.8, 2, 0.1), M.graphite, dorsal); blk.position.set(x, 0.24 - 0.035 * x * x, 0.3);
-    const ey = partMesh(new THREE.TorusGeometry(0.13, 0.04, 10, 24), M.metal, dorsal, false); ey.position.set(x, 0.48 - 0.035 * x * x, 0.55);
-    const a = new THREE.Object3D(); a.position.copy(ey.position); dorsal.add(a); kb.push(a);
-  });
-  { // strap: superellipse band around the palm
-    const shape = new THREE.Shape(), hole = new THREE.Path();
-    const sup = (path, ax, ay, n) => { for (let i = 0; i <= 96; i++) { const a = (i / 96) * Math.PI * 2; const c = Math.cos(a), s = Math.sin(a); const x = ax * Math.sign(c) * Math.pow(Math.abs(c), 2 / n), y = ay * Math.sign(s) * Math.pow(Math.abs(s), 2 / n); i ? path.lineTo(x, y) : path.moveTo(x, y); } };
-    sup(shape, 4.32, 1.66, 3.2); sup(hole, 4.2, 1.55, 3.2); shape.holes.push(hole);
-    const g = new THREE.ExtrudeGeometry(shape, { depth: 0.7, bevelEnabled: true, bevelThickness: 0.04, bevelSize: 0.03, bevelSegments: 2, curveSegments: 4 });
-    const strap = partMesh(g, M.graphite, dorsal); strap.position.set(0.05, -1.25, -0.65);
+  // limb sections, used to place parts on the sleeve (forearm in hand space, upper arm in the elbow's frame; t runs along +Z)
+  const foreSec = (z) => { const q = sect(z); return { c: new V3(0, FA_Y, z), X: new V3(1, 0, 0), Y: new V3(0, 1, 0), A: new V3(0, 0, 1), r: q.r, sx: q.sx, sy: q.sy }; };
+  const upperSec = (d) => { const b = bicepD(d) * ss(3.4, 6, d); return { c: new V3(0, -b, -d), X: new V3(1, 0, 0), Y: new V3(0, 1, 0), A: new V3(0, 0, 1), r: upperR(d) + b, sx: UA_SX, sy: UA_SY }; };
+  const surf = (q, a, lift) => q.c.clone().addScaledVector(q.X, Math.cos(a) * (q.r + SLEEVE + lift) * q.sx).addScaledVector(q.Y, Math.sin(a) * (q.r + SLEEVE + lift) * q.sy);
+  const normalAt = (q, a) => q.X.clone().multiplyScalar(Math.cos(a) * q.sy).addScaledVector(q.Y, Math.sin(a) * q.sx).normalize();
+  // stand an object on the sleeve: local +Y out of the surface, local +Z along the limb
+  const place = (obj, q, a, lift = 0) => {
+    const N = normalAt(q, a), Z = q.A.clone(); Z.addScaledVector(N, -Z.dot(N)).normalize();
+    obj.position.copy(surf(q, a, lift));
+    obj.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(new V3().crossVectors(N, Z), N, Z));
+    return obj;
+  };
+
+  // glove: the same knit over the palm and the first two segments of each finger; the fingertips stay bare for touch
+  skinMesh(knitUVPalm(offsetGeo(palmGeo(), GLOVE), GLOVE_SW, GLOVE_RH), wrist, M.glove);
+  const gloveOver = (bones, def, i) => {
+    const L = def.L[i], r0 = def.r[i] + GLOVE, r1 = def.r[i + 1] + GLOVE;
+    // the second segment stops at the last knuckle with a short, flat hem
+    const g = i === 0 ? phalanxGeo(L, r0, r1, 0.85) : phalanxGeo(L - r1 * 0.32, r0, r1, 0.3);
+    skinMesh(knitUVFinger(g, (r0 + r1) / 2, GLOVE_SW, GLOVE_RH), bones[i], M.glove);
+  };
+  fingers.forEach((f) => { gloveOver(f.bones, f.def, 0); gloveOver(f.bones, f.def, 1); });
+  gloveOver(thumbBones, THUMB, 0); gloveOver(thumbBones, THUMB, 1);
+  // yarn strain sensors read each finger joint (sense annotation)
+  anchors.yarn = anchor(fingers[0].bones[0], 0, (FINGERS[0].r[1] + GLOVE) * 0.84 + 0.1, FINGERS[0].L[0] * 0.42);
+
+  // carbon back-of-hand plate: the brakes push against it
+  const PX = -0.05, PZ = 0.25, onGlove = (x, z, lift = 0) => palmTop(x, z) + GLOVE + 0.04 + lift;
+  const plate = new THREE.Group(); plate.position.set(PX, 0, PZ); wrist.add(plate);
+  {
+    // a stiff shell follows the hand's broad curve, not its small bumps: smooth the height under the footprint
+    const soft = (x, z) => { let h = 0; for (const [dx, dz] of [[0, 0], [0.6, 0], [-0.6, 0], [0, 0.6], [0, -0.6]]) h += onGlove(x + PX + dx, z + PZ + dz); return h / 5; };
+    partMesh(plateGeo({ w0: 2.1, w1: 2.6, z0: -2.3, z1: 2.25, thick: 0.18, height: soft }), M.carbon, plate, true, 40);
+    // hand motion sensor
+    const iy = soft(0.9, -1.1) + 0.18 + 0.1;
+    const imu = partMesh(new RoundedBoxGeometry(1.1, 0.2, 0.8, 2, 0.08), M.graphite, plate); imu.position.set(0.9, iy, -1.1);
+    anchors.imuHand = anchor(plate, 0.9, iy + 0.12, -1.1);
+    anchors.plate = anchor(plate, -1.6, soft(-1.6, 0.4) + 0.22, 0.4);
   }
-  addPart(dorsal, [0, 3.0, 0.4], 0.1);
-  anchors.dorsal = new THREE.Object3D(); anchors.dorsal.position.set(-3.2, 0.1, -0.6); dorsal.add(anchors.dorsal);
+  addPart(plate, [0, 3.0, 0.2], 0.08);
 
-  // finger guides: proximal guide with housing, middle guide with cable anchor
-  const guideAnchors = [];
-  const fingerGuides = (bones, def, isThumb) => {
-    const out = [];
-    const segs = isThumb ? [1] : [0, 1];
-    segs.forEach((si, k) => {
-      const L = def.L[si];
-      const zc = L * (si === 0 || isThumb ? 0.52 : 0.46);
-      const r = lerp(def.r[si], def.r[si + 1], zc / L) * (isThumb ? 1 : 1);
-      const g = new THREE.Group(); g.position.set(0, 0, zc); bones[si].add(g);
-      partMesh(saddleGeo(r, isThumb ? 1.1 : (k === 0 ? 1.25 : 0.95)), M.polymer, g);
-      const top = (r + 0.26) * 0.84;
-      let ay = top + 0.14;
-      if (k === 0 || isThumb) {
-        const h = partMesh(new RoundedBoxGeometry(0.92, 0.42, 1.25, 3, 0.13), M.graphite, g); h.position.y = top + 0.16;
-        const pin = partMesh(new THREE.CylinderGeometry(0.16, 0.16, 1.02, 18), M.metal, g, false); pin.rotation.z = Math.PI / 2; pin.position.set(0, top + 0.12, -0.25);
-        ay = top + 0.5;
-      }
-      const ey = partMesh(new THREE.TorusGeometry(0.12, 0.035, 10, 24), M.metal, g, false); ey.position.y = ay;
-      const a = new THREE.Object3D(); a.position.y = ay; g.add(a);
-      addPart(g, [0, 1.5 + k * 0.9, 0], 0.15 + k * 0.08);
-      out.push(a);
+  // electrostatic brakes: film strips about a millimetre thick along the back of each finger, plate to middle segment
+  const brakeTabs = [];
+  const brake = (bones, def, isIndex, segs) => {
+    const mat = isIndex ? M.brakeIdx : M.film;
+    segs.forEach(([i, z0f, z1f], k) => {
+      const L = def.L[i], r0 = def.r[i], r1 = def.r[i + 1];
+      const top = (z) => { const t = z / L; return (lerp(r0, r1, t) * (1 - 0.05 * Math.sin(t * Math.PI)) + GLOVE) * 0.84 + 0.035; };
+      const z0 = L * z0f, z1 = L * z1f, len = z1 - z0;
+      const g = new THREE.Group(); bones[i].add(g);
+      const m = partMesh(bend(new RoundedBoxGeometry(0.44, 0.05, len, 2, 0.02), 0.5), mat, g);
+      m.position.set(0, (top(z0) + top(z1)) / 2, (z0 + z1) / 2); m.rotation.x = Math.atan2(top(z0) - top(z1), len);
+      if (k === segs.length - 1) { const tab = partMesh(new RoundedBoxGeometry(0.58, 0.12, 0.3, 2, 0.05), M.graphite, g); tab.position.set(0, top(z1) + 0.03, z1); brakeTabs.push(anchor(g, 0, top(z1) + 0.12, z1)); }
+      addPart(g, [0, 1.3 + k * 0.5, 0], 0.14 + k * 0.05);
     });
-    return out;
   };
-  fingers.forEach((f) => guideAnchors.push(fingerGuides(f.bones, f.def, false)));
-  const thumbGuide = fingerGuides(thumbBones, THUMB, true);
+  fingers.forEach((f, i) => brake(f.bones, f.def, i === 0, [[0, 0.12, 0.9], [1, 0.08, 0.6]]));
+  brake(thumbBones, THUMB, false, [[0, 0.5, 0.92], [1, 0.08, 0.6]]);
+  anchors.brakes = brakeTabs[1]; anchors.brakeTab = brakeTabs[0];
+  // short leads from the plate to each knuckle
+  { const g = new THREE.Group(); wrist.add(g);
+    FINGERS.forEach((f) => {
+      const x = f.base[0] * 0.92, m = partMesh(new RoundedBoxGeometry(0.4, 0.05, 1.5, 2, 0.02), M.film, g, false);
+      const y0 = onGlove(x, 2.3, 0.03), y1 = onGlove(x, 3.8, 0.03);
+      m.position.set(x, (y0 + y1) / 2, 3.05); m.rotation.x = Math.atan2(y0 - y1, 1.5);
+    });
+    addPart(g, [0, 2.2, 0.3], 0.11); }
 
-  // cables
-  const cables = [];
-  const cableMatIdx = M.cable.clone();
-  function cableFor(i) {
-    const mat = i === 0 ? cableMatIdx : M.cable;
-    const mesh = new THREE.Mesh(new THREE.BufferGeometry(), mat); mesh.castShadow = true; hand.add(mesh);
-    return mesh;
-  }
-  const cableRoutes = fingers.map((f, i) => ({ mesh: cableFor(i), pts: [ports[i + 1], kb[i], ...guideAnchors[i]] }));
-  const thumbWay = new THREE.Object3D(); thumbWay.position.set(0, THUMB.r[1] * 0.84 + 0.25, THUMB.L[0] * 0.55); thumbBones[0].add(thumbWay);
-  cableRoutes.push({ mesh: cableFor(9), pts: [ports[0], anchors.dorsal, thumbWay, thumbGuide[0]] });
-  cableRoutes.push({ mesh: cableFor(10), pts: anchors.armRoute, r: 0.2, noLift: true });
+  // forearm cuff with the wrist chip that runs the fast loop and drives the wrist brakes
+  const CUFF = [-11.4, -6.6];
+  const cuff = new THREE.Group(); hand.add(cuff);
+  partMesh(limbShell((t) => foreSec(lerp(CUFF[0], CUFF[1], t)), { len: CUFF[1] - CUFF[0], off: SLEEVE + 0.012, thick: 0.2, a0: -0.25, a1: Math.PI + 0.25 }), M.carbon, cuff, true, 40);
+  { const chip = place(new THREE.Group(), foreSec(-8.7), Math.PI / 2, 0.21); cuff.add(chip);
+    const box = partMesh(new RoundedBoxGeometry(2.3, 0.36, 2.9, 3, 0.12), M.graphite, chip); box.position.y = 0.17;
+    const led = new THREE.Mesh(new RoundedBoxGeometry(1.1, 0.04, 0.09, 1, 0.02), new THREE.MeshBasicMaterial({ color: C.accent })); led.position.set(0, 0.36, 1.0); chip.add(led);
+    anchors.imuFore = anchor(chip, 0, 0.42, -0.4); }
+  // wrist brakes: two strips over the back of the wrist, cuff to plate
+  { const q = foreSec(-4.4), y = q.c.y + (q.r + SLEEVE) * q.sy + 0.04;
+    [-0.8, 0.8].forEach((x) => { const m = partMesh(bend(new RoundedBoxGeometry(0.5, 0.05, 4.2, 2, 0.02), 0.2), M.film, cuff); m.position.set(x, y - 0.02 * x * x, -4.5); }); }
+  addPart(cuff, [0, 3.4, 0], 0.12);
+
+  // 16-channel dry EMG band on the upper forearm, where the finger and wrist muscles are
+  const EMG_Z = -17.6;
+  const emg = new THREE.Group(); hand.add(emg);
+  { const q = foreSec(EMG_Z);
+    const sh = new THREE.Group(); sh.position.copy(q.c); sh.rotation.x = -Math.PI / 2; sh.scale.set(q.sx, 1, q.sy); emg.add(sh);
+    partMesh(ringGeo(q.r + SLEEVE + 0.005, 0.07, 1.25, 0.03), M.graphite, sh, false);
+    for (let k = 0; k < 16; k++) {
+      const pod = place(new THREE.Group(), q, Math.PI / 2 + 0.2 + (k / 16) * Math.PI * 2, 0.07); emg.add(pod);
+      partMesh(new RoundedBoxGeometry(0.92, 0.3, 1.3, 2, 0.11), M.graphite, pod, k % 4 === 0).position.y = 0.12;
+      if (k === 0) anchors.emg = anchor(pod, 0, 0.36, 0);
+    } }
+  addPart(emg, [0, -3.2, 0], 0.16);
+
+  // upper-arm cuff with the grip-assist motor (it pulls a cable to the hand for about 10 N of grip)
+  const UCUFF = [18.6, 12.2];
+  const ucuff = new THREE.Group(); upper.add(ucuff);
+  partMesh(limbShell((t) => upperSec(lerp(UCUFF[0], UCUFF[1], t)), { len: UCUFF[0] - UCUFF[1], off: SLEEVE + 0.012, thick: 0.22, a0: Math.PI / 2 - 1.85, a1: Math.PI / 2 + 1.85 }), M.carbon, ucuff, true, 40);
+  { const motor = place(new THREE.Group(), upperSec(15.4), Math.PI / 2 + 0.95, 0.23); ucuff.add(motor);
+    const base = partMesh(new RoundedBoxGeometry(1.6, 0.28, 3.4, 3, 0.1), M.graphite, motor); base.position.y = 0.12;
+    const body = partMesh(new THREE.CapsuleGeometry(0.58, 2.1, 8, 28), M.graphite, motor); body.rotation.x = Math.PI / 2; body.position.y = 0.74;
+    const band = partMesh(new THREE.CylinderGeometry(0.61, 0.61, 0.14, 28), M.metal, motor, false); band.rotation.x = Math.PI / 2; band.position.set(0, 0.74, 0.7);
+    anchors.imuUpper = anchor(motor, 0, 1.45, 0); }
+  addPart(ucuff, [0, 3.6, 0], 0.2);
+
+  // shoulder pack: 8 Wh battery, the shoulder chip and the radio, kept off the hand
+  const POD = [33.0, 27.6];
+  const pod = new THREE.Group(); upper.add(pod);
+  { const aC = Math.PI / 2 + 0.6;
+    partMesh(limbShell((t) => upperSec(lerp(POD[0], POD[1], t)), { len: POD[0] - POD[1], off: SLEEVE + 0.012, thick: 0.8, a0: aC - 0.68, a1: aC + 0.68, bevel: 0.22 }), M.graphite, pod, true, 40);
+    const lid = place(new THREE.Group(), upperSec(30.3), aC, 0.82); pod.add(lid);
+    const led = new THREE.Mesh(new RoundedBoxGeometry(0.09, 0.04, 2.4, 1, 0.02), new THREE.MeshBasicMaterial({ color: C.accent })); led.position.set(0, 0.02, 0); lid.add(led);
+    anchors.imuShoulder = anchor(lid, 0, 0.3, 1.2); }
+  addPart(pod, [0, 4.2, 0], 0.24);
+
+  // twelve vibration cues in the knit: wrist, forearm, elbow, upper arm and shoulder. pos runs 0 (shoulder) to 1 (wrist).
+  const CUES = [
+    ['f', -5.0, 2.2], ['f', -5.2, 4.1],
+    ['f', -13.8, 2.6], ['f', -20.6, 2.75], ['f', -22.4, 1.1],
+    ['f', -24.6, 3.85], ['u', 4.6, 2.55],
+    ['u', 8.8, 3.7], ['u', 21.6, 2.45], ['u', 23.8, 0.85],
+    ['u', 34.2, 2.7], ['u', 34.4, 4.25],
+  ];
+  const ARM_LEN = UA_LEN + (-2.5 - ELBOW_Z);
+  const glowMap = glowTexture();
+  const cues = CUES.map(([fr, v, a], i) => {
+    const q = fr === 'f' ? foreSec(v) : upperSec(v), parent = fr === 'f' ? hand : upper;
+    const g = place(new THREE.Group(), q, a, 0.0); parent.add(g);
+    const padGeo = new THREE.SphereGeometry(0.44, 32, 12, 0, Math.PI * 2, 0, Math.PI / 2); padGeo.scale(1, 0.16, 1);
+    partMesh(padGeo, M.cue, g, false).position.y = -0.02;
+    const mat = new THREE.MeshStandardMaterial({ color: M.cue.color, emissive: C.accent, emissiveIntensity: 0, roughness: 0.5 });
+    const dotGeo = new THREE.SphereGeometry(0.2, 24, 8, 0, Math.PI * 2, 0, Math.PI / 2); dotGeo.scale(1, 0.3, 1);
+    const dot = new THREE.Mesh(dotGeo, mat); dot.position.y = 0.0; g.add(dot);
+    const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowMap, color: C.accent, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending }));
+    halo.scale.setScalar(2.6); halo.position.y = 0.25; halo.visible = false; g.add(halo);
+    const n = normalAt(q, a).multiplyScalar(1.3);
+    addPart(g, [n.x, n.y, n.z], 0.26 + i * 0.006);
+    const s = fr === 'f' ? UA_LEN + (v - ELBOW_Z) : UA_LEN - v;
+    return { g, mat, halo, pos: clamp(s / ARM_LEN) };
+  });
+  anchors.cueWrist = anchor(cues[0].g, 0, 0.3, 0); anchors.cues = anchor(cues[2].g, 0, 0.3, 0);
 
   // explode axes (dashed), one per part, in hand space
   const axisGeo = new THREE.BufferGeometry(); axisGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(parts.length * 6), 3));
@@ -506,27 +673,20 @@ export async function createTalentScene(canvas, opts = {}) {
     live.renderOrder = 11;
     const head = new THREE.Mesh(new THREE.ConeGeometry(0.2, 0.55, 16), live.material);
     head.renderOrder = 11;
-    hand.add(ghost, live, head);
-    return { ghost, live, head, curve, pts };
+    // where the brake holds the finger: a tick across the end of the path
+    const stop = new THREE.Mesh(new THREE.TorusGeometry(0.34, 0.035, 8, 32), live.material); stop.renderOrder = 11;
+    stop.position.copy(pts[pts.length - 1]); stop.quaternion.setFromUnitVectors(new V3(0, 0, 1), curve.getTangentAt(1));
+    hand.add(ghost, live, head, stop);
+    return { ghost, live, head, stop, curve, pts };
   })();
 
   // ----- state -----
   const tmp = new V3(), tmp2 = new V3();
   let W = 1, H = 1;
-  let lastCableKey = '';
 
+  // the sleeve and its seam are rebuilt from the limb when the elbow bends
   function rebuildCables() {
-    hand.updateMatrixWorld(true);
-    for (const r of cableRoutes) {
-      const pts = r.pts.map((a) => hand.worldToLocal(a.getWorldPosition(new V3())));
-      // lift the run between port and dorsal guide over the back of the hand
-      const p0 = pts[0], p1 = pts[1];
-      const mid = p0.clone().lerp(p1, 0.5); mid.y += r.noLift ? 0.3 : 0.6;
-      const all = [p0, mid, ...pts.slice(1)];
-      const curve = new THREE.CatmullRomCurve3(all, false, 'centripetal');
-      r.mesh.geometry.dispose();
-      r.mesh.geometry = new THREE.TubeGeometry(curve, r.r ? 140 : 90, r.r || 0.06, r.r ? 10 : 6, false);
-    }
+    seam.geometry.dispose(); seam.geometry = seamGeo(samples);
   }
 
   // 0 = resting on the table, 1 = raised in profile; roll turns the raised arm about the forearm
@@ -536,10 +696,12 @@ export async function createTalentScene(canvas, opts = {}) {
     hand.quaternion.copy(tableQuat).slerp(reachQuat(roll), st);
     hand.position.copy(tablePos).lerp(reachPos, st);
     wrist.rotation.x = REACH.wrist * st; wrist.scale.setScalar(lerp(1, 1.1, st));
-    const bend = Math.round(lerp(TABLE_BEND, -REACH.bend, st) * 200) / 200;
-    if (bend !== armBend) {
-      armBend = bend; upper.rotation.x = bend;
-      armMesh.geometry.dispose(); armMesh.geometry = armOutline.geometry = armGeo(bend);
+    const b = Math.round(lerp(TABLE_BEND, -REACH.bend, st) * 200) / 200;
+    if (b !== armBend) {
+      armBend = b; upper.rotation.x = b;
+      samples = armSamples(b);
+      sleeve.geometry.dispose(); sleeve.geometry = sleeveOutline.geometry = sleeveGeo(samples);
+      rebuildCables();
     }
     const gy = lerp(-3.35, -24, ss(0, 0.5, st)), rs = st < 0.5;
     ground.position.y = gy;
@@ -557,11 +719,11 @@ export async function createTalentScene(canvas, opts = {}) {
   // intro (table stance) shot, then the raised-arm chapter shots
   const KF = {
     hero: { t: [8, 3.6, -5], az: -0.4, el: 0.36, d: 74, fov: 28, sx: 0.22 },
-    sense: { t: [0, 4, 1], az: 0.25, el: 0.14, d: 78, fov: 28, sx: 0.1, mt: [5, 5, 1], md: 92 },
-    adaptClose: { t: [9, 6, 2], az: 0.4, el: 0.2, d: 50, fov: 28, sx: 0.2, mt: [11, 6, 3], md: 64 },
-    adapt: { t: [-2, 4, 0], az: 0.25, el: 0.2, d: 86, fov: 28, sx: 0.16, mt: [3, 4, 0], md: 104 },
-    assist: { t: [11, 7, 4], az: 0.55, el: 0.22, d: 44, fov: 28, sx: 0.28, mt: [12, 9, 4], md: 40 },
-    learn: { t: [11, 7, 4], az: 0.8, el: 0.3, d: 46, fov: 28, sx: 0.28, mt: [12, 9, 4], md: 42 },
+    sense: { t: [-1, 4, 1], az: 0.25, el: 0.14, d: 84, fov: 28, sx: 0.1, mt: [5, 5, 1], md: 96 },
+    adaptClose: { t: [9, 6, 2], az: 0.4, el: 0.2, d: 54, fov: 28, sx: 0.12, mt: [11, 6, 3], md: 64 },
+    adapt: { t: [7, 5, 1], az: 0.3, el: 0.24, d: 60, fov: 28, sx: 0.12, mt: [9, 5, 2], md: 72 },
+    assist: { t: [10, 7, 4], az: 0.7, el: 0.3, d: 62, fov: 28, sx: 0.14, mt: [12, 9, 4], md: 44 },
+    learn: { t: [10, 7, 4], az: 0.82, el: 0.3, d: 62, fov: 28, sx: 0.14, mt: [12, 9, 4], md: 46 },
   };
   const mt = (k) => k.mt || k.t, md = (k) => k.md || k.d;
   const blendKF = (a, b, t) => ({ t: a.t.map((v, i) => lerp(v, b.t[i], t)), mt: mt(a).map((v, i) => lerp(v, mt(b)[i], t)), md: lerp(md(a), md(b), t), az: lerp(a.az, b.az, t), el: lerp(a.el, b.el, t), d: lerp(a.d, b.d, t), fov: lerp(a.fov, b.fov, t), sx: lerp(a.sx, b.sx, t) });
@@ -587,17 +749,20 @@ export async function createTalentScene(canvas, opts = {}) {
     camera.updateProjectionMatrix();
   }
 
+  const ghostDark = new THREE.Color(0x111010);
   function setDrawing(d, ghost) {
     M.skin.color.copy(C.skin).lerp(C.skinGhost, ghost);
     M.skin.sheen = 0.7 * (1 - ghost);
     M.nail.color.set(0xc79a88).lerp(C.skinGhost, ghost);
+    for (const m of [M.knit, M.glove]) { m.color.copy(C.knit).lerp(C.knitGhost, ghost); m.sheen = 1 - ghost; m.bumpScale = KNIT_BUMP * (1 - 0.8 * ghost); }
+    M.cue.color.copy(C.knit).multiplyScalar(0.34).lerp(C.knitGhost, ghost);
     outlineHand.uniforms.uOpacity.value = 0.55 * ghost;
     handOutlines.forEach((o) => (o.visible = ghost > 0.01));
     outlinePart.uniforms.uOpacity.value = 0.95 * d;
     partOutlines.forEach((o) => (o.visible = d > 0.01));
     edgeMat.opacity = 0.85 * d; edgeLines.forEach((e) => (e.visible = d > 0.01));
-    M.graphite.color.copy(C.graphite).lerp(new THREE.Color(0x111010), d * 0.6);
-    M.polymer.opacity = lerp(0.8, 0.5, d);
+    M.graphite.color.copy(C.graphite).lerp(ghostDark, d * 0.6);
+    M.carbon.color.copy(C.carbon).lerp(ghostDark, d * 0.6);
     axisMat.opacity = 0.7 * d;
   }
 
@@ -614,26 +779,32 @@ export async function createTalentScene(canvas, opts = {}) {
     pos.needsUpdate = true; axisLines.computeLineDistances();
   }
 
+  // guidance: cues fire in a wave down the arm as the finger moves, and the index brake holds at the end of the path
   function setAssist(level, vis, u) {
     trajectoryVisible(vis);
     traj.live.material.opacity = level * vis;
-    cableMatIdx.color.copy(C.cable).lerp(C.accent, level * vis);
-    cableMatIdx.emissive.copy(C.accent).multiplyScalar(0.35 * level * vis);
+    const hold = level * vis * ss(0.7, 0.96, u);
+    M.brakeIdx.color.copy(C.film).lerp(C.accent, hold);
+    M.brakeIdx.emissive.copy(C.accent).multiplyScalar(0.45 * hold);
+    cues.forEach((c) => {
+      const k = level * vis * Math.exp(-((u * 1.15 - 0.05 - c.pos) ** 2) / 0.018);
+      c.mat.emissiveIntensity = 2.4 * k; c.halo.material.opacity = 0.85 * k; c.halo.visible = k > 0.01;
+    });
     // head rides along the path at u
     const t = clamp(u, 0.001, 0.999);
     traj.curve.getPointAt(t, traj.head.position);
     const tan = traj.curve.getTangentAt(t);
     traj.head.quaternion.setFromUnitVectors(new V3(0, 1, 0), tan);
     traj.head.visible = level * vis > 0.02;
+    traj.stop.visible = vis > 0.01;
   }
   function trajectoryVisible(v) { traj.ghost.material.opacity = 0.8 * v; traj.ghost.visible = v > 0.01; traj.live.visible = v > 0.01; }
 
   // annotation anchors (world positions -> screen)
   const annot = {
-    joint: guideAnchors[0][1], fit: guideAnchors[1][0], imu: anchors.imu, tension: kb[1],
-    cuff: anchors.imu, module: anchors.module, dorsal: anchors.dorsal, guides: guideAnchors[2][0],
-    elbow: anchors.elbow, emg: anchors.emg, pack: anchors.pack, hinge: anchors.elbow,
-    tip: fingers[0].tip,
+    yarn: anchors.yarn, imuHand: anchors.imuHand, emg: anchors.emg, imuFore: anchors.imuFore, imuUpper: anchors.imuUpper, imuShoulder: anchors.imuShoulder,
+    plate: anchors.plate, brakes: anchors.brakes, cuff: anchors.imuFore, band: anchors.emg, motor: anchors.imuUpper, pack: anchors.imuShoulder, cues: anchors.cues,
+    tip: fingers[0].tip, cue: anchors.cueWrist, brake: anchors.brakeTab,
   };
   function project() {
     const out = {};
@@ -658,6 +829,9 @@ export async function createTalentScene(canvas, opts = {}) {
       pose.t = pose.t.map((v) => v + (breathe - 0.5) * 0.05);
       k = blendKF(KF.hero, { ...KF.hero, d: KF.hero.d * 0.86, el: KF.hero.el + 0.08 }, ss(0, 1, p));
       drift = idle ? Math.sin(time * 0.09) * 0.07 : 0;
+      // between portrait and wide screens, pull back and shift right so the hand stays clear of the headline and buttons
+      const aspect = W / H;
+      if (!center && aspect >= 0.9 && aspect < 1.6) k = { ...k, d: k.d * Math.pow(1.6 / aspect, 0.6), sx: k.sx + (1.6 - aspect) * 0.12 };
       setStance(0);
     } else {
       k = camAt(p);
@@ -680,9 +854,6 @@ export async function createTalentScene(canvas, opts = {}) {
     setExplode(explode);
     setDrawing(drawing, ghost);
     hand.updateMatrixWorld(true);
-    const ck = pose.f[0].concat(pose.f[1], pose.t, [explode]).map((v) => v.toFixed(3)).join(',') + stanceKey;
-    if (ck !== lastCableKey) { rebuildCables(); lastCableKey = ck; }
-    M.cable.opacity = 1;
     setAssist(level, vis, u);
     applyCamera(k, drift, center);
     key.target.position.set(0, -1, 2);
@@ -700,5 +871,5 @@ export async function createTalentScene(canvas, opts = {}) {
   }
 
   setStance(0);
-  return { update, resize, setStance, renderer, scene, camera, hand, fingers, thumbBones, thumbTip, setPose, M, props, still, KF, applyCamera, setExplode, setDrawing, setAssist, rebuildCables, THREE, ground, wrist, parts };
+  return { update, resize, setStance, renderer, scene, camera, hand, fingers, thumbBones, thumbTip, setPose, M, props, still, KF, applyCamera, setExplode, setDrawing, setAssist, rebuildCables, THREE, ground, wrist, parts, upper };
 }

@@ -3,7 +3,8 @@
 <body><canvas id="c"></canvas><script type="module">
 import { createTalentScene } from '/src/scene.js';
 const c=document.getElementById('c');
-const S=await createTalentScene(c,{preserve:true, stance:new URLSearchParams(location.search).get("stance")||"reach"});
+const Q=new URLSearchParams(location.search);
+const S=await createTalentScene(c,{preserve:true, stance:Q.get("stance")||"reach", knit:Q.get("knit")?parseInt(Q.get("knit"),16):undefined});
 S.resize(innerWidth,innerHeight);
 const T=S.THREE, V3=T.Vector3;
 const REL={ f: [[0.2,0.34,0.2],[0.22,0.38,0.22],[0.26,0.42,0.24],[0.3,0.46,0.26]], t:[0.05,0.18,0.16] };
