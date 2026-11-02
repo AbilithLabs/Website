@@ -7,13 +7,15 @@ Directives: `::figure fig-N` embeds src/white-paper/figures/fig-N.svg, `::pull` 
 -->
 ## Thesis and motivation
 
-AI can write code, pass the bar exam and reason through problems that stump experts. Yet it still can't do what a child's hands do without thinking: catch a ball, tie a shoe, feel their way through the world. Roboticists call this Moravec's paradox, and the industry's answer is to build AI a body of its own. But the original already exists. Evolution spent millions of years refining it, and no machine has come close. It's yours.
+AI can write code, pass the bar exam, and reason through the challenges that flummox experts. Yet movements we barely think about, like catching a ball or tying a shoe, remain difficult to reproduce in a machine. This is the strange inversion at the heart of Moravec's paradox: what takes us years to learn intellectually can be easier to compute than what our bodies do without thinking. Much of the industry is working to give AI a body of its own. We want to put that intelligence to work in the system evolution has spent millions of years perfecting: the body you already have.
 
-Abilith is pioneering **somatic computing**: AI that runs through the human body. Our first system, Hermes, is worn from the fingertips to the shoulder. It's designed to carry skills captured from the world's best people, like a surgeon's precision, a pianist's touch or a champion's swing, and to guide your arm through them until the skill becomes your own.
+Abilith is building **somatic computing**: AI that works through the human body to extend what a person can do. Our first system, Hermes, is a sleeve we're developing that runs from the fingertips to the shoulder. We're designing it to turn an expert's recorded movement into physical guidance you can feel while you practice. A pianist's timing. A surgeon's control. The small adjustments that an expert makes instinctively and a beginner struggles to see, let alone reproduce.
 
-The last wave of AI changed what people know. Somatic computing changes what people can do.
+The ambition is to let you experience what getting a movement right feels like, then help you build the ability to do it yourself. Your hands still do the work. You decide what to make, what to learn, and how to express it.
 
-This paper sets out why physical skill has never scaled, why it can now, how somatic computing works, and the principles we'll hold to as we build it. No one has built a somatic computer yet, but the research to build one now exists, spread across labs and products around the world, and this paper brings it together. Our thesis is simple. Physical AI's breakthrough moment won't be a robot in your kitchen. It will be the moment AI makes every person more capable, and it starts with your arm.
+The research behind this vision exists across motor learning, wearable sensing, and haptics. Bringing it together into something people can comfortably wear and reliably use is the engineering work ahead. This paper lays out that foundation, the system we're proposing, and the questions we still have to answer.
+
+Our thesis is simple. Physical AI's breakthrough moment won't be a robot in your kitchen. It will be the moment AI makes every person more capable, and it starts with your arm.
 
 ## Two futures
 

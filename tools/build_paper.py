@@ -37,24 +37,32 @@ WORDMARK = ('<svg viewBox="0 0 30 14" aria-hidden="true"><rect x="0.5" y="4.5" w
             '<rect x="11.5" y="2.5" width="7" height="9" fill="currentColor"/><rect x="24.5" y="4.5" width="5" height="5" fill="none" stroke="currentColor"/>'
             '<path d="M6 7h5M19 7h5" stroke="currentColor"/></svg>')
 
-FOOTER = ('<footer class="mono"><span>Abilith / Pioneering somatic computing.</span>'
-          '<span>Every Abilith system is named for a figure from Greek myth. Hermes, the quick-handed messenger, comes first. '
-          'Athena, a more intelligent system, follows.</span></footer>')
+def page_source():
+    return open(os.path.join(ROOT, 'src', 'page.html')).read()
+
+
+def site_footer():
+    """The home page's footer, copied as is (its links are absolute, so they work from /resources too)."""
+    m = re.search(r'<footer class="site-foot">.*?</footer>', page_source(), re.S)
+    assert m, 'expected <footer class="site-foot"> in src/page.html'
+    return m.group(0)
 
 
 def site_css():
     """The home page's shared rules: tokens, base type, grid overlay, nav, buttons and footer."""
-    page = open(os.path.join(ROOT, 'src', 'page.html')).read()
+    page = page_source()
     css = page[page.index('<style>') + len('<style>'):page.index('</style>')]
     base = css[css.index(':root {'):css.index('/* ---------- hero ---------- */')]
-    keep = [l for l in css.splitlines() if re.match(r'(\.btn[ .:{]|footer \{|\.prose \.pull )', l)]
-    assert len(keep) >= 6, 'expected .btn, footer and .prose .pull rules in src/page.html'
+    keep = [l for l in css.splitlines()
+            if re.match(r'(\.btn[ .:{]|footer[ .:{]|\.foot-|\.prose \.pull |@media[^{]*\{ *(footer|\.foot-))', l)]
+    assert sum(l.startswith('.btn') for l in keep) >= 5, 'expected the .btn rules in src/page.html'
+    assert any(l.startswith('footer') for l in keep) and any(l.startswith('.foot-') for l in keep), 'expected the footer rules in src/page.html'
+    assert any(l.startswith('.prose .pull') for l in keep), 'expected the .prose .pull rule in src/page.html'
     return base + '\n'.join(keep) + '\n'
 
 
 PAGE_CSS = """
 /* ---------- resources pages ---------- */
-.nav::before { content: ""; position: absolute; inset: 0 0 -18px; background: linear-gradient(var(--ink) 55%, rgba(11,10,9,0)); z-index: -1; pointer-events: none; }
 .res { position: relative; z-index: 2; padding-top: calc(var(--nav-h) + clamp(28px, 5vw, 64px)); padding-bottom: 48px; }
 .crumb { display: inline-flex; gap: 10px; align-items: center; color: var(--paper-dim); text-decoration: none; padding: 6px 0; }
 .crumb:hover { color: var(--paper); }
@@ -272,7 +280,7 @@ class Paper:
 
 
 def nav(current):
-    links = [('/#approach', 'Approach'), ('/#thesis', 'Thesis'), ('/#research', 'Research'), ('/resources', 'Resources')]
+    links = [('/#hermes', 'Hermes'), ('/#principles', 'Principles'), ('/resources', 'Resources')]
     here = ' aria-current="page"'
     items = ''.join(f'<li><a class="btn-sq" href="{h}"{here if t == current else ""}>{t}</a></li>' for h, t in links)
     return (f'<header class="nav"><a class="wordmark" href="/" aria-label="Abilith, home">{WORDMARK}<span>Abilith</span></a>'
@@ -318,7 +326,7 @@ def build():
         '</header>' + cover(p['kicker']) +
         f'<div class="p-body grid12">{toc}<article class="p-text prose" aria-label="{attr(p["full_title"])}">{body}</article></div>'
         '<a class="btn line back" href="/resources"><span class="arr" aria-hidden="true">&#8592;</span> Back to Resources</a>'
-        f'{FOOTER}</main>'), extra_head=head, tail=TOC_JS)
+        f'{site_footer()}</main>'), extra_head=head, tail=TOC_JS)
 
     index_html = page('Resources: Abilith', 'Papers and notes from Abilith on somatic computing.', (
         nav('Resources') +
@@ -329,7 +337,7 @@ def build():
         f'<div class="r-meta"><p class="tag mono">{esc(p["kicker"])}</p><h2>{esc(p["full_title"])}</h2>'
         f'<p>{esc(p["dek"])}</p><p class="mono">{esc(p["author"])} &middot; {esc(p["date"])}</p></div></a>'
         '</li></ul>'
-        f'{FOOTER}</main>'), extra_head='<meta property="og:type" content="website">')
+        f'{site_footer()}</main>'), extra_head='<meta property="og:type" content="website">')
 
     os.makedirs(OUT, exist_ok=True)
     open(os.path.join(OUT, 'white-paper.html'), 'w').write(paper_html)

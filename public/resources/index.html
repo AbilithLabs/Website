@@ -20,7 +20,7 @@
 * { box-sizing: border-box; }
 html { scroll-behavior: smooth; }
 @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
-body { background: var(--ink); color: var(--paper); font-family: var(--body); font-size: var(--t-m); line-height: 1.55; font-stretch: 100%; -webkit-font-smoothing: antialiased; overflow-x: clip; }
+body { margin: 0; background: var(--ink); color: var(--paper); font-family: var(--body); font-size: var(--t-m); line-height: 1.55; font-stretch: 100%; -webkit-font-smoothing: antialiased; overflow-x: clip; }
 body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 40; background: var(--ink); }
 a { color: inherit; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
@@ -29,6 +29,7 @@ a { color: inherit; }
 .eyebrow { font-family: var(--mono); font-size: var(--t-xs); letter-spacing: 0.1em; text-transform: uppercase; color: var(--paper-dim); display: flex; gap: 10px; align-items: center; }
 .eyebrow::before { content: ""; width: 7px; height: 7px; border: 1px solid currentColor; }
 h1, h2, h3 { font-family: var(--display); font-weight: 700; font-stretch: 68%; text-transform: uppercase; line-height: 0.86; letter-spacing: -0.005em; margin: 0; text-wrap: balance; }
+h1 em, h2 em { font-style: normal; color: transparent; -webkit-text-stroke: 1px var(--paper); }
 p { margin: 0; }
 .lede { font-size: var(--t-l); line-height: 1.45; max-width: 34ch; color: var(--paper); }
 .body-copy { max-width: 60ch; color: var(--paper-dim); }
@@ -49,15 +50,14 @@ p { margin: 0; }
 /* ---------- nav ---------- */
 .nav { position: fixed; top: env(safe-area-inset-top, 0px); left: 0; right: 0; z-index: 50; height: var(--nav-h); display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-left: max(var(--side), env(safe-area-inset-left, 0px)); padding-right: max(var(--side), env(safe-area-inset-right, 0px)); pointer-events: none; }
 .nav > * { pointer-events: auto; }
+.nav::before { content: ""; position: absolute; inset: 0 0 -18px; background: linear-gradient(var(--ink) 30%, rgba(11,10,9,0)); z-index: -1; pointer-events: none; }
 .wordmark { display: inline-flex; align-items: center; gap: 10px; text-decoration: none; font-family: var(--display); font-stretch: 125%; font-weight: 600; font-size: 15px; letter-spacing: 0.22em; text-transform: uppercase; padding: 8px 0; }
 .wordmark svg { width: 30px; height: 14px; }
 .nav ul { list-style: none; display: flex; gap: 6px; margin: 0; padding: 0; }
 .btn-sq { display: inline-flex; align-items: center; gap: 8px; min-height: 36px; padding: 0 14px; border: 1px solid var(--rule-strong); background: rgba(11, 10, 9, 0.55); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); font-family: var(--mono); font-size: var(--t-xs); letter-spacing: 0.1em; text-transform: uppercase; text-decoration: none; color: var(--paper); transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease; }
 .btn-sq:hover { background: var(--paper); color: var(--ink); border-color: var(--paper); }
 .btn-sq[aria-current="page"] { border-color: var(--paper); }
-@media (max-width: 520px) { .btn-sq { padding: 0 10px; } .nav ul { gap: 4px; } .wordmark { letter-spacing: 0.16em; font-size: 13px; } .wordmark span { display: none; } }
-/* four nav links don't fit on small phones: drop Approach (an anchor on the home page) and tighten the buttons */
-@media (max-width: 440px) { .nav li:first-child { display: none; } }
+@media (max-width: 520px) { .btn-sq { padding: 0 10px; } .nav ul { gap: 4px; } .nav .wordmark span { display: none; } }
 @media (max-width: 350px) { .btn-sq { padding: 0 8px; letter-spacing: 0.06em; } }
 
 .btn { display: inline-flex; align-items: center; justify-content: space-between; gap: 22px; min-height: 46px; padding: 0 16px; border: 1px solid var(--paper); text-decoration: none; font-family: var(--mono); font-size: 12px; letter-spacing: 0.09em; text-transform: uppercase; transition: background 0.2s, color 0.2s; }
@@ -66,11 +66,19 @@ p { margin: 0; }
 .btn.line { border-color: var(--rule-strong); background: rgba(11,10,9,.5); }
 .btn.line:hover { border-color: var(--paper); }
 .btn .arr { font-family: var(--body); }
-footer { margin-top: clamp(80px, 12vw, 160px); padding-top: 18px; border-top: 1px solid var(--rule-strong); display: flex; flex-wrap: wrap; gap: 12px 32px; justify-content: space-between; color: var(--paper-dim); }
+footer { margin-top: clamp(80px, 12vw, 160px); padding-top: 24px; border-top: 1px solid var(--rule-strong); display: grid; grid-template-columns: repeat(12, 1fr); gap: 32px 16px; color: var(--paper-dim); }
+.foot-brand { grid-column: 1 / span 4; display: grid; gap: 14px; align-content: start; justify-items: start; }
+.foot-brand p { max-width: 30ch; color: var(--paper); }
+.foot-col { grid-column: span 2; display: grid; gap: 12px; align-content: start; }
+.foot-col ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.foot-col a { color: var(--paper); text-decoration: none; }
+.foot-col a:hover { color: var(--accent); }
+.foot-note { grid-column: 9 / span 4; display: grid; gap: 12px; align-content: start; font-size: var(--t-s); }
+.foot-base { grid-column: 1 / -1; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px 24px; border-top: 1px solid var(--rule); padding-top: 14px; }
+@media (max-width: 760px) { footer { grid-template-columns: 1fr 1fr; } .foot-brand, .foot-note, .foot-base { grid-column: 1 / -1; } .foot-col { grid-column: span 1; } }
 .prose .pull { font-family: var(--display); font-stretch: 75%; font-weight: 600; font-size: clamp(26px, 2.6vw, 36px); line-height: 1.1; text-transform: uppercase; color: var(--paper); border-left: 1px solid var(--accent); padding-left: 18px; }
 
 /* ---------- resources pages ---------- */
-.nav::before { content: ""; position: absolute; inset: 0 0 -18px; background: linear-gradient(var(--ink) 55%, rgba(11,10,9,0)); z-index: -1; pointer-events: none; }
 .res { position: relative; z-index: 2; padding-top: calc(var(--nav-h) + clamp(28px, 5vw, 64px)); padding-bottom: 48px; }
 .crumb { display: inline-flex; gap: 10px; align-items: center; color: var(--paper-dim); text-decoration: none; padding: 6px 0; }
 .crumb:hover { color: var(--paper); }
@@ -167,4 +175,13 @@ footer { margin-top: clamp(80px, 12vw, 160px); padding-top: 18px; border-top: 1p
   .res { padding-top: 0; }
   .p-body { display: block; }
 }
-</style></head><body><div class="grid-overlay" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><header class="nav"><a class="wordmark" href="/" aria-label="Abilith, home"><svg viewBox="0 0 30 14" aria-hidden="true"><rect x="0.5" y="4.5" width="5" height="5" fill="none" stroke="currentColor"/><rect x="11.5" y="2.5" width="7" height="9" fill="currentColor"/><rect x="24.5" y="4.5" width="5" height="5" fill="none" stroke="currentColor"/><path d="M6 7h5M19 7h5" stroke="currentColor"/></svg><span>Abilith</span></a><nav aria-label="Primary"><ul><li><a class="btn-sq" href="/#approach">Approach</a></li><li><a class="btn-sq" href="/#thesis">Thesis</a></li><li><a class="btn-sq" href="/#research">Research</a></li><li><a class="btn-sq" href="/resources" aria-current="page">Resources</a></li></ul></nav></header><main class="res wrap" id="top"><header class="r-head grid12"><p class="eyebrow">Papers and notes</p><h1>Resources</h1></header><ul class="r-list"><li class="r-card"><a href="/resources/white-paper"><div class="p-cover" aria-hidden="true"><span class="mono"><span>Abilith / White paper</span><span>Somatic computing</span></span><p>AI just got a body. <em>Yours.</em></p><span class="mono"><span>Hermes</span><span>Nov 2, 2026</span></span></div><div class="r-meta"><p class="tag mono">White paper</p><h2>Somatic Computing: Abilith White Paper</h2><p>Why physical skill has never scaled, why it can now, and how somatic computing works.</p><p class="mono">Ashwin &middot; Nov 2, 2026</p></div></a></li></ul><footer class="mono"><span>Abilith / Pioneering somatic computing.</span><span>Every Abilith system is named for a figure from Greek myth. Hermes, the quick-handed messenger, comes first. Athena, a more intelligent system, follows.</span></footer></main></body></html>
+</style></head><body><div class="grid-overlay" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><header class="nav"><a class="wordmark" href="/" aria-label="Abilith, home"><svg viewBox="0 0 30 14" aria-hidden="true"><rect x="0.5" y="4.5" width="5" height="5" fill="none" stroke="currentColor"/><rect x="11.5" y="2.5" width="7" height="9" fill="currentColor"/><rect x="24.5" y="4.5" width="5" height="5" fill="none" stroke="currentColor"/><path d="M6 7h5M19 7h5" stroke="currentColor"/></svg><span>Abilith</span></a><nav aria-label="Primary"><ul><li><a class="btn-sq" href="/#hermes">Hermes</a></li><li><a class="btn-sq" href="/#principles">Principles</a></li><li><a class="btn-sq" href="/resources" aria-current="page">Resources</a></li></ul></nav></header><main class="res wrap" id="top"><header class="r-head grid12"><p class="eyebrow">Papers and notes</p><h1>Resources</h1></header><ul class="r-list"><li class="r-card"><a href="/resources/white-paper"><div class="p-cover" aria-hidden="true"><span class="mono"><span>Abilith / White paper</span><span>Somatic computing</span></span><p>AI just got a body. <em>Yours.</em></p><span class="mono"><span>Hermes</span><span>Nov 2, 2026</span></span></div><div class="r-meta"><p class="tag mono">White paper</p><h2>Somatic Computing: Abilith White Paper</h2><p>Why physical skill has never scaled, why it can now, and how somatic computing works.</p><p class="mono">Ashwin &middot; Nov 2, 2026</p></div></a></li></ul><footer class="site-foot">
+      <div class="foot-brand">
+        <a class="wordmark" href="/" aria-label="Abilith, home"><svg viewBox="0 0 30 14" aria-hidden="true"><rect x="0.5" y="4.5" width="5" height="5" fill="none" stroke="currentColor"/><rect x="11.5" y="2.5" width="7" height="9" fill="currentColor"/><rect x="24.5" y="4.5" width="5" height="5" fill="none" stroke="currentColor"/><path d="M6 7h5M19 7h5" stroke="currentColor"/></svg><span>Abilith</span></a>
+        <p>Pioneering somatic computing: superhuman ability, for everyone.</p>
+      </div>
+      <div class="foot-col"><p class="mono">Site</p><ul><li><a href="/#hermes">Hermes</a></li><li><a href="/#library">Skill library</a></li><li><a href="/#principles">Principles</a></li></ul></div>
+      <div class="foot-col"><p class="mono">Resources</p><ul><li><a href="/resources/white-paper">White paper</a></li><li><a href="/resources">All resources</a></li></ul></div>
+      <div class="foot-note"><p>All imagery is concept renders. Hermes is in early development and isn't working hardware, and the figures on this site are design targets.</p><p>Every Abilith system is named for a figure from Greek myth. Hermes, the quick-handed messenger, comes first. Athena, a more intelligent system, follows.</p></div>
+      <div class="foot-base mono"><span>Abilith</span><span>Somatic computing / 2026</span></div>
+    </footer></main></body></html>
