@@ -35,3 +35,7 @@ try:
 except ImportError:
     print('Pillow not installed: public/img left as is')
 print('built public/index.html', len(site))
+
+# the white paper page and the Resources index (public/resources/)
+import runpy
+runpy.run_path(os.path.join(ROOT, 'tools', 'build_paper.py'), run_name='__main__')

@@ -64,6 +64,9 @@ p { margin: 0; }
 .btn-sq:hover { background: var(--paper); color: var(--ink); border-color: var(--paper); }
 .btn-sq[aria-current="page"] { border-color: var(--paper); }
 @media (max-width: 520px) { .btn-sq { padding: 0 10px; } .nav ul { gap: 4px; } .wordmark { letter-spacing: 0.16em; font-size: 13px; } .wordmark span { display: none; } }
+/* four nav links don't fit on small phones: drop Approach (an anchor on the home page) and tighten the buttons */
+@media (max-width: 440px) { .nav li:first-child { display: none; } }
+@media (max-width: 350px) { .btn-sq { padding: 0 8px; letter-spacing: 0.06em; } }
 
 /* ---------- hero ---------- */
 main, .content { position: relative; z-index: 2; }
@@ -288,6 +291,7 @@ footer { margin-top: clamp(80px, 12vw, 160px); padding-top: 18px; border-top: 1p
       <li><a class="btn-sq" href="#approach">Approach</a></li>
       <li><a class="btn-sq" href="#thesis">Thesis</a></li>
       <li><a class="btn-sq" href="#research">Research</a></li>
+      <li><a class="btn-sq" href="/resources">Resources</a></li>
     </ul>
   </nav>
 </header>
@@ -522,7 +526,7 @@ footer { margin-top: clamp(80px, 12vw, 160px); padding-top: 18px; border-top: 1p
       <h2>System structure</h2>
       <p>Camera smart glasses supply context: the task, the object and where your hands are. Sensing from the fingertips to the bicep reads movement, contact and muscle activity. An adaptation layer tunes assistance to the wearer, the task and the skill being played back. A local feedback controller on the device applies it. Higher-level AI interprets skills and goals, while physical control stays local.</p>
       <h2>Status</h2>
-      <p>Hermes 1.0 is in early development. There are no study results yet, and the device shown on this site is a rendered concept. A white paper is in preparation.</p>
+      <p>Hermes 1.0 is in early development. There are no study results yet, and the device shown on this site is a rendered concept. Our <a href="/resources/white-paper">white paper</a> sets out the research Hermes builds on.</p>
     </div>
     <aside>
       <div class="box mono">Stage<br><span style="color:var(--paper)">Early development</span></div>
