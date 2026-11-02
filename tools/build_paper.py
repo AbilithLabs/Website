@@ -33,12 +33,19 @@ FONTS = ('<link rel="preconnect" href="https://fonts.googleapis.com">'
          '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>'
          '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,300..800&family=IBM+Plex+Mono:wght@400;500&display=swap">')
 
-WORDMARK = ('<svg viewBox="0 0 30 14" aria-hidden="true"><rect x="0.5" y="4.5" width="5" height="5" fill="none" stroke="currentColor"/>'
-            '<rect x="11.5" y="2.5" width="7" height="9" fill="currentColor"/><rect x="24.5" y="4.5" width="5" height="5" fill="none" stroke="currentColor"/>'
-            '<path d="M6 7h5M19 7h5" stroke="currentColor"/></svg>')
+ICONS = ('<link rel="icon" href="/favicon.ico" sizes="32x32"><link rel="icon" href="/favicon.svg" type="image/svg+xml">'
+         '<link rel="apple-touch-icon" href="/apple-touch-icon.png">')
+
 
 def page_source():
     return open(os.path.join(ROOT, 'src', 'page.html')).read()
+
+
+def site_wordmark():
+    """The logo inside the home page's nav link (the full wordmark plus the soma-I shown on narrow screens)."""
+    m = re.search(r'<a class="wordmark" href="#top"[^>]*>(.*?)</a>', page_source(), re.S)
+    assert m and 'wm-full' in m.group(1), 'expected the nav wordmark svg in src/page.html'
+    return m.group(1).strip()
 
 
 def site_footer():
@@ -283,7 +290,7 @@ def nav(current):
     links = [('/#hermes', 'Hermes'), ('/#principles', 'Principles'), ('/resources', 'Resources')]
     here = ' aria-current="page"'
     items = ''.join(f'<li><a class="btn-sq" href="{h}"{here if t == current else ""}>{t}</a></li>' for h, t in links)
-    return (f'<header class="nav"><a class="wordmark" href="/" aria-label="Abilith, home">{WORDMARK}<span>Abilith</span></a>'
+    return (f'<header class="nav"><a class="wordmark" href="/" aria-label="Abilith, home">{site_wordmark()}</a>'
             f'<nav aria-label="Primary"><ul>{items}</ul></nav></header>')
 
 
@@ -296,7 +303,7 @@ def cover(tag):
 def page(title, desc, body, extra_head='', tail=''):
     return ('<!doctype html><html lang="en"><head><meta charset="utf-8">'
             '<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">'
-            f'<title>{esc(title)}</title><meta name="description" content="{attr(desc)}">{extra_head}{FONTS}'
+            f'<title>{esc(title)}</title><meta name="description" content="{attr(desc)}">{extra_head}{ICONS}{FONTS}'
             f'<style>{site_css()}{PAGE_CSS}</style></head><body>'
             '<div class="grid-overlay" aria-hidden="true">' + '<i></i>' * 12 + '</div>'
             f'{body}{tail}</body></html>\n')
