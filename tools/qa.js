@@ -38,7 +38,7 @@ const fs = require('fs');
     const items = [...nav.querySelectorAll('.btn-sq, .wordmark')].map((el) => el.getBoundingClientRect());
     return {
       scrollW: document.documentElement.scrollWidth, W,
-      navOneLine: new Set(items.map((r) => Math.round(r.top))).size === 1,
+      navOneLine: new Set(items.map((r) => Math.round((r.top + r.bottom) / 2))).size === 1, // same vertical centre (the logo is taller than the buttons)
       navRight: Math.round(Math.max(...items.map((r) => r.right))), navLeft: Math.round(Math.min(...items.map((r) => r.left))),
       wide,
     };
