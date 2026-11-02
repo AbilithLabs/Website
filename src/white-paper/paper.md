@@ -158,7 +158,7 @@ Robots are getting cheaper, and they should take on more of the heavy, repetitiv
 
 Physical AI is at a fork. One path builds machines that do things for us. The other builds AI that lets us do anything.
 
-Within the next decade, we believe more people will wear physical AI than will ever live alongside a humanoid robot. Abilith is pioneering somatic computing so that the future arrives as the second one: superhuman ability, for everyone. You choose the move. AI brings the skill.
+Within the next decade, we believe more people will wear physical AI than will ever live alongside a humanoid robot. Abilith is pioneering somatic computing so that the future arrives as the second one: superhuman ability, for everyone. The skill of the world's best, in your own two hands.
 
 ::closer AI just got a body.|Yours.
 
